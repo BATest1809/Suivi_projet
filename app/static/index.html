@@ -1,0 +1,1570 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivi des temps et dépenses</title>
+<style>
+:root{
+  --fond:#F6F7FB; --carte:#FFFFFF; --bordure:#E6E9EF; --bordure-forte:#D0D4E4;
+  --encre:#323338; --gris:#676879; --gris-clair:#9699A6; --voile:#F0F3FF;
+  --bleu:#0073EA; --bleu-sombre:#0060B9; --bleu-voile:#E5F1FE;
+  --vert:#00C875; --vert-voile:#E3F7ED;
+  --jaune:#FDAB3D; --jaune-voile:#FFF3E2;
+  --rouge:#E2445C; --rouge-voile:#FCE9EC;
+  --violet:#A25DDC; --turquoise:#00C4C4; --indigo:#5559DF; --ardoise:#7E8DA3;
+  --r:8px; --r-s:4px;
+  --ombre:0 1px 2px rgba(0,0,0,.04), 0 4px 14px -6px rgba(50,53,56,.14);
+  --ombre-forte:0 4px 24px -8px rgba(50,53,56,.26);
+  --police:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--fond);color:var(--encre);font-family:var(--police);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-weight:600;letter-spacing:-.015em;margin:0}
+h1{font-size:26px;line-height:1.2}
+h2{font-size:17px;margin-bottom:4px}
+h3{font-size:15px}
+p{margin:0 0 10px}
+a{color:var(--bleu)}
+.sub{color:var(--gris);font-size:13.5px;max-width:76ch}
+.muted{color:var(--gris-clair)}
+.cache{display:none!important}
+
+/* ---------- connexion ---------- */
+#vueConnexion,#vueMotDePasse{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:linear-gradient(160deg,#F6F7FB 0%,#EDF1FB 55%,#E8EEFC 100%)}
+.portail{width:100%;max-width:430px;background:var(--carte);border-radius:12px;
+  box-shadow:var(--ombre-forte);padding:34px 32px 28px}
+.portail h1{margin-bottom:6px}
+.portail .sub{margin-bottom:22px}
+.portail .f{margin-bottom:14px}
+.puce{display:flex;gap:5px;margin-bottom:20px}
+.puce span{height:5px;flex:1;border-radius:3px}
+
+/* ---------- barre haute ---------- */
+.rail{background:var(--carte);border-bottom:1px solid var(--bordure);position:sticky;top:0;z-index:20}
+.rail-int{max-width:1280px;margin:0 auto;padding:11px 22px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.marque{font-size:17px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;display:flex;align-items:center;gap:9px}
+.marque::before{content:"";width:22px;height:22px;border-radius:6px;
+  background:linear-gradient(135deg,var(--bleu) 0%,var(--violet) 100%)}
+.marque span{color:var(--gris);font-size:13px;font-weight:400;margin-left:3px}
+.rail-droite{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rail select{background:var(--fond);color:var(--encre);border:1px solid var(--bordure);
+  border-radius:var(--r-s);padding:7px 10px;font-size:13.5px;max-width:330px;font-weight:500}
+.lien-rail{background:none;border:1px solid var(--bordure);border-radius:var(--r-s);color:var(--gris);
+  padding:7px 13px;font-size:13px;cursor:pointer;font-family:var(--police);font-weight:500}
+.lien-rail:hover{background:var(--fond);color:var(--encre)}
+.lien-rail[aria-pressed=true]{background:var(--bleu);border-color:var(--bleu);color:#fff}
+
+.wrap{max-width:1280px;margin:0 auto;padding:24px 22px 90px}
+.entete{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between}
+.entete .filet{color:var(--gris);font-size:13px;margin-top:5px}
+.etat{font-size:12.5px;color:var(--gris-clair)}
+.etat.err{color:var(--rouge);font-weight:500}
+
+/* ---------- indicateurs ---------- */
+.indicateurs{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:14px;margin-top:20px}
+.indic{background:var(--carte);border-radius:var(--r);box-shadow:var(--ombre);padding:16px 18px;
+  border-top:3px solid var(--bleu)}
+.indic:nth-child(2){border-top-color:var(--violet)}
+.indic:nth-child(3){border-top-color:var(--turquoise)}
+.indic:nth-child(4){border-top-color:var(--vert)}
+.indic:nth-child(5){border-top-color:var(--jaune)}
+.indic:nth-child(6){border-top-color:var(--indigo)}
+.indic:nth-child(7){border-top-color:var(--rouge)}
+.indic .v{font-size:28px;font-weight:700;line-height:1.1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.indic .l{font-size:12.5px;color:var(--gris);margin-top:5px}
+.grand-nombre{font-size:44px;font-weight:700;letter-spacing:-.035em;line-height:1}
+
+/* ---------- graphiques ---------- */
+.grille-graphes{display:grid;grid-template-columns:320px 1fr;gap:18px;margin-top:18px}
+@media(max-width:980px){.grille-graphes{grid-template-columns:1fr}}
+.legende{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:14px;font-size:12.5px;color:var(--gris)}
+.legende b{font-variant-numeric:tabular-nums;color:var(--encre);font-weight:600}
+.pastille{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:7px;transform:translateY(1px)}
+.bande{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--bordure);margin-top:4px}
+.bande-vide{display:flex;align-items:center;justify-content:center;width:100%;color:var(--gris-clair);font-size:12.5px}
+
+/* ---------- navigation ---------- */
+nav.onglets{display:flex;flex-wrap:wrap;gap:4px;margin:22px 0 18px}
+nav.onglets button{font-family:var(--police);font-size:13.5px;font-weight:500;color:var(--gris);
+  background:none;border:none;border-radius:var(--r-s);padding:8px 14px;cursor:pointer}
+nav.onglets button:hover{background:var(--carte);color:var(--encre)}
+nav.onglets button[aria-selected=true]{background:var(--bleu);color:#fff;font-weight:600}
+:focus-visible{outline:2px solid var(--bleu);outline-offset:2px}
+
+.panneau{display:none}.panneau.on{display:block}
+.carte{background:var(--carte);border-radius:var(--r);box-shadow:var(--ombre);padding:20px 22px;margin-bottom:18px}
+.carte>h2{margin-bottom:6px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+
+/* ---------- formulaires ---------- */
+form.grille{display:grid;grid-template-columns:repeat(12,1fr);gap:12px 14px;align-items:end}
+.f{display:flex;flex-direction:column;gap:5px}
+.f label{font-size:12px;color:var(--gris);font-weight:500}
+.c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}
+.c5{grid-column:span 5}.c6{grid-column:span 6}.c7{grid-column:span 7}
+.c8{grid-column:span 8}.c9{grid-column:span 9}.c12{grid-column:span 12}
+input,select,textarea{font-family:var(--police);font-size:13.5px;color:var(--encre);background:var(--carte);
+  border:1px solid var(--bordure-forte);border-radius:var(--r-s);padding:8px 10px;width:100%}
+input:hover,select:hover{border-color:var(--gris-clair)}
+input:focus,select:focus{border-color:var(--bleu);box-shadow:0 0 0 3px var(--bleu-voile);outline:none}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+button.pleine{font-family:var(--police);font-size:13.5px;font-weight:600;background:var(--bleu);color:#fff;
+  border:none;border-radius:var(--r-s);padding:9px 18px;cursor:pointer}
+button.pleine:hover{background:var(--bleu-sombre)}
+button.vide,a.vide{font-family:var(--police);font-size:13.5px;font-weight:500;background:var(--carte);
+  color:var(--encre);border:1px solid var(--bordure-forte);border-radius:var(--r-s);padding:9px 18px;
+  cursor:pointer;text-decoration:none;display:inline-block}
+button.vide:hover,a.vide:hover{border-color:var(--bleu);color:var(--bleu)}
+button.mini{background:none;border:none;color:var(--gris);font-size:12.5px;padding:3px 6px;
+  border-radius:var(--r-s);cursor:pointer;font-family:var(--police);font-weight:500}
+button.mini:hover{background:var(--voile);color:var(--bleu)}
+button.mini.rouge:hover{background:var(--rouge-voile);color:var(--rouge)}
+
+/* ---------- tableaux ---------- */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-weight:600;font-size:11.5px;color:var(--gris);text-transform:none;
+  border-bottom:1px solid var(--bordure);padding:9px 10px;white-space:nowrap}
+td{border-bottom:1px solid var(--bordure);padding:9px 10px;vertical-align:middle}
+tfoot th{border-top:1px solid var(--bordure-forte);border-bottom:none;color:var(--encre);font-size:13px}
+tbody tr:hover td{background:var(--fond)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.defile{overflow-x:auto;margin:0 -6px;padding:0 6px}
+
+/* pastilles pleines, à la manière d'un statut de tableau */
+.pilule{display:inline-block;padding:4px 11px;border-radius:14px;font-size:12px;font-weight:600;
+  color:#fff;white-space:nowrap;line-height:1.35}
+.etiq{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:11px;
+  background:var(--bordure);color:var(--gris);white-space:nowrap;margin:0 4px 3px 0}
+.etiq.att{background:var(--rouge-voile);color:var(--rouge)}
+.etiq.ok{background:var(--vert-voile);color:#00875A}
+.etiq.or{background:var(--jaune-voile);color:#B4690E}
+.etiq.bleu{background:var(--bleu-voile);color:var(--bleu-sombre)}
+.avatar{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+  border-radius:50%;color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.02em;flex:none}
+.acteur{display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
+.vide{padding:28px 10px;color:var(--gris-clair);font-size:13.5px;text-align:center}
+
+ul.avis{list-style:none;margin:0;padding:0}
+ul.avis li{background:var(--rouge-voile);border-left:4px solid var(--rouge);border-radius:var(--r-s);
+  padding:11px 14px;font-size:13.5px;margin-bottom:9px}
+ul.avis li.serein{background:var(--vert-voile);border-left-color:var(--vert)}
+
+.encart{background:var(--bleu-voile);border-left:4px solid var(--bleu);border-radius:var(--r-s);
+  padding:13px 15px;margin-bottom:16px;font-size:13.5px}
+.encart code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
+  background:var(--carte);padding:3px 8px;border-radius:var(--r-s);border:1px solid var(--bordure-forte)}
+
+@media(max-width:900px){
+  .duo{grid-template-columns:1fr}
+  .c2,.c3,.c4,.c5,.c6,.c7,.c8,.c9{grid-column:span 12}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media print{.rail,nav.onglets,form,.actions,button{display:none!important}
+  body{background:#fff}.panneau{display:block!important}
+  .carte{box-shadow:none;border:1px solid #ddd;break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<!-- ============ CONNEXION ============ -->
+<div id="vueConnexion">
+  <div class="portail">
+    <div class="puce">
+      <span style="background:#0073EA"></span><span style="background:#00C875"></span>
+      <span style="background:#FDAB3D"></span><span style="background:#E2445C"></span>
+      <span style="background:#A25DDC"></span>
+    </div>
+    <h1>Suivi des temps et dépenses</h1>
+    <p class="sub">Relevé des heures, des dépenses techniques et des pièces justificatives, projet par projet.</p>
+    <div id="messageConnexion" class="encart cache"></div>
+    <form onsubmit="return false">
+      <div class="f"><label for="l_email">Adresse électronique</label>
+        <input type="email" id="l_email" autocomplete="username"></div>
+      <div class="f"><label for="l_mdp">Mot de passe</label>
+        <input type="password" id="l_mdp" autocomplete="current-password"></div>
+      <div class="actions"><button class="pleine" id="l_submit" type="button">Se connecter</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ CHANGEMENT DE MOT DE PASSE ============ -->
+<div id="vueMotDePasse" class="cache" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:26px">
+  <div class="portail">
+    <h1>Choisissez un mot de passe</h1>
+    <p class="sub">Votre mot de passe actuel est provisoire. Remplacez-le pour accéder à vos projets.</p>
+    <div id="messageMdp" class="encart cache"></div>
+    <form onsubmit="return false">
+      <div class="f" id="champAncien"><label for="m_ancien">Mot de passe actuel</label>
+        <input type="password" id="m_ancien" autocomplete="current-password"></div>
+      <div class="f"><label for="m_nouveau">Nouveau mot de passe, huit caractères au minimum</label>
+        <input type="password" id="m_nouveau" autocomplete="new-password"></div>
+      <div class="f"><label for="m_confirme">Confirmation</label>
+        <input type="password" id="m_confirme" autocomplete="new-password"></div>
+      <div class="actions">
+        <button class="pleine" id="m_submit" type="button">Enregistrer le mot de passe</button>
+        <button class="vide" id="m_retour" type="button">Revenir</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APPLICATION ============ -->
+<div id="vueApp" class="cache">
+  <div class="rail">
+    <div class="rail-int">
+      <div class="marque">Temps et dépenses<span id="identite"></span></div>
+      <div class="rail-droite">
+        <select id="selProjet" aria-label="Projet"></select>
+        <button class="lien-rail" id="btnAdmin">Administration</button>
+        <button class="lien-rail" id="btnMdp">Mot de passe</button>
+        <button class="lien-rail" id="btnSortie">Quitter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- espace projet ---- -->
+  <div class="wrap" id="espaceProjet">
+    <div class="entete">
+      <div><h1 id="titreProjet">Chargement…</h1><div class="filet" id="filetProjet"></div></div>
+      <div class="etat" id="etatTxt"></div>
+    </div>
+
+    <div class="indicateurs" id="indicateurs"></div>
+
+    <div class="grille-graphes">
+      <div class="carte" style="margin-bottom:0">
+        <h2>Répartition de l'effort</h2>
+        <div id="camembert"></div>
+        <div class="legende" id="legende"></div>
+      </div>
+      <div class="carte" style="margin-bottom:0">
+        <h2>Charge mensuelle par type de tâche</h2>
+        <div id="barresMois"></div>
+      </div>
+    </div>
+
+    <nav class="onglets" role="tablist">
+      <button role="tab" data-onglet="recap" aria-selected="true">Récapitulatif</button>
+      <button role="tab" data-onglet="temps" aria-selected="false">Temps passé</button>
+      <button role="tab" data-onglet="recurrences" aria-selected="false">Récurrences</button>
+      <button role="tab" data-onglet="depenses" aria-selected="false">Dépenses techniques</button>
+      <button role="tab" data-onglet="personnes" aria-selected="false">Personnes</button>
+      <button role="tab" data-onglet="reglages" aria-selected="false">Réglages et export</button>
+    </nav>
+
+    <section class="panneau on" id="o-recap">
+      <div class="carte">
+        <h2>Points à arbitrer avant transmission</h2>
+        <p class="sub">Un récapitulatif ne tient devant un financeur que si les hypothèses restantes sont visibles. Cette liste se vide à mesure que les zones grises sont tranchées.</p>
+        <ul class="avis" id="listeAvis"></ul>
+      </div>
+      <div class="duo">
+        <div class="carte"><h2>Temps par type de tâche</h2><div class="defile"><table id="tType"></table></div></div>
+        <div class="carte"><h2>Temps et coût par acteur</h2><div class="defile"><table id="tPersRecap"></table></div></div>
+      </div>
+      <div class="duo">
+        <div class="carte"><h2>Dépenses par catégorie</h2><div class="defile"><table id="tCatRecap"></table></div></div>
+        <div class="carte"><h2>Charge par mois</h2><div class="defile"><table id="tMois"></table></div></div>
+      </div>
+      <div class="carte">
+        <h2>Synthèse à date</h2>
+        <div class="defile"><table id="tSynth"></table></div>
+        <div class="actions"><button class="vide" onclick="window.print()">Imprimer</button></div>
+      </div>
+    </section>
+
+    <section class="panneau" id="o-temps">
+      <div class="carte" id="carteFormTemps">
+        <h2 id="tTitre">Ajouter du temps passé</h2>
+        <p class="sub">Une ligne correspond au temps d'une seule personne. Pour une réunion à plusieurs, enregistrez puis dupliquez en changeant l'acteur.</p>
+        <form class="grille" onsubmit="return false">
+          <input type="hidden" id="a_id">
+          <div class="f c2"><label for="a_date">Date</label><input type="date" id="a_date"></div>
+          <div class="f c2"><label for="a_debut">Début</label><input type="time" id="a_debut"></div>
+          <div class="f c2"><label for="a_fin">Fin</label><input type="time" id="a_fin"></div>
+          <div class="f c2"><label for="a_duree">Durée (h)</label><input type="number" id="a_duree" step="0.25" min="0" placeholder="auto"></div>
+          <div class="f c4"><label for="a_personne">Acteur</label><select id="a_personne"></select></div>
+          <div class="f c6"><label for="a_libelle">Libellé</label><input type="text" id="a_libelle" placeholder="Intitulé de la réunion ou de la session"></div>
+          <div class="f c3"><label for="a_type">Type de tâche</label><select id="a_type"></select></div>
+          <div class="f c3"><label for="a_livrable">Livrable rattaché</label><input type="text" id="a_livrable"></div>
+          <div class="f c2"><label for="a_part">Part imputable (%)</label><input type="number" id="a_part" min="0" max="100" step="5" value="100"></div>
+          <div class="f c2"><label for="a_source">Source de la trace</label><select id="a_source">
+            <option value="agenda">Agenda</option><option value="teams">Messagerie</option>
+            <option value="notebook">Notebook ou dépôt</option><option value="declaratif">Déclaratif</option></select></div>
+          <div class="f c2"><label for="a_statut">Statut de la durée</label><select id="a_statut">
+            <option value="mesure">Mesurée</option><option value="estime">Estimée</option></select></div>
+          <div class="f c2"><label for="a_mixte">Objet mixte</label><select id="a_mixte">
+            <option value="non">Non</option><option value="oui">Oui</option></select></div>
+          <div class="f c4"><label for="a_note">Note</label><input type="text" id="a_note"></div>
+          <div class="c12 actions">
+            <button class="pleine" id="a_submit" type="button">Ajouter la ligne</button>
+            <button class="vide" id="a_annule" type="button" style="display:none">Annuler</button>
+          </div>
+        </form>
+      </div>
+      <div class="carte">
+        <h2>Lignes enregistrées</h2>
+        <div class="actions" style="margin:0 0 14px">
+          <select id="fType" style="width:auto"></select>
+          <select id="fPers" style="width:auto"></select>
+          <select id="fOrigine" style="width:auto">
+            <option value="">Toutes origines</option>
+            <option value="rec">Issues d'une récurrence</option>
+            <option value="uni">Saisies ponctuelles</option>
+            <option value="rep">Séances reportées</option>
+            <option value="att">Estimations en attente</option>
+            <option value="val">Estimations validées</option>
+          </select>
+          <button class="vide" id="fReset">Tout afficher</button>
+          <span class="muted" id="fCompte"></span>
+        </div>
+        <div id="bandeauValidation"></div>
+        <div class="defile"><table id="tAct"></table></div>
+      </div>
+    </section>
+
+    <section class="panneau" id="o-recurrences">
+      <div class="carte" id="carteFormRec">
+        <h2 id="rTitre">Ajouter une règle de récurrence</h2>
+        <p class="sub">Une règle matérialise une séance par mois sur la fenêtre indiquée. Quand la date théorique tombe un jour férié, un week-end ou une journée déjà occupée, la séance glisse au premier jour ouvrable libre, un samedi renvoyant au lundi. Modifier une règle la rejoue entièrement.</p>
+        <form class="grille" onsubmit="return false">
+          <input type="hidden" id="r_id">
+          <div class="f c6"><label for="r_libelle">Libellé des séances</label><input type="text" id="r_libelle"></div>
+          <div class="f c3"><label for="r_jour">Jour de la semaine</label><select id="r_jour">
+            <option value="0">lundi</option><option value="1">mardi</option><option value="2">mercredi</option>
+            <option value="3">jeudi</option><option value="4">vendredi</option>
+            <option value="5">samedi</option><option value="6">dimanche</option></select></div>
+          <div class="f c3"><label for="r_rang">Rang dans le mois</label><select id="r_rang">
+            <option value="1">premier</option><option value="2">deuxième</option>
+            <option value="3">troisième</option><option value="4">quatrième</option>
+            <option value="-1">dernier</option></select></div>
+          <div class="f c3"><label for="r_debut">Début de fenêtre</label><input type="date" id="r_debut"></div>
+          <div class="f c3"><label for="r_fin">Fin de fenêtre</label><input type="date" id="r_fin"></div>
+          <div class="f c2"><label for="r_duree">Durée (h)</label><input type="number" id="r_duree" step="0.25" min="0" value="7"></div>
+          <div class="f c2"><label for="r_part">Part imputable (%)</label><input type="number" id="r_part" min="0" max="100" step="5" value="100"></div>
+          <div class="f c2"><label for="r_statut">Statut</label><select id="r_statut">
+            <option value="estime">Estimée</option><option value="mesure">Mesurée</option></select></div>
+          <div class="f c4"><label for="r_reporter">Jour férié ou occupé</label><select id="r_reporter">
+            <option value="oui">Reporter au jour ouvrable suivant</option>
+            <option value="non">Laisser à la date théorique</option></select></div>
+          <div class="f c4"><label for="r_type">Type de tâche</label><select id="r_type"></select></div>
+          <div class="f c4"><label for="r_personne">Acteur</label><select id="r_personne"></select></div>
+          <div class="f c12"><label for="r_note">Note</label><input type="text" id="r_note"></div>
+          <div class="c12 actions">
+            <button class="pleine" id="r_submit" type="button">Créer la règle et générer les séances</button>
+            <button class="vide" id="r_annule" type="button" style="display:none">Annuler</button>
+          </div>
+        </form>
+      </div>
+      <div class="carte"><h2>Règles en vigueur</h2><div class="defile"><table id="tRec"></table></div></div>
+    </section>
+
+    <section class="panneau" id="o-depenses">
+      <div class="carte" id="carteFormDep">
+        <h2 id="dTitre">Ajouter une dépense technique</h2>
+        <p class="sub">Calcul, appels d'API, stockage, licences, sous-traitance, matériel. Le statut reste sur estimée tant que la pièce n'est pas au dossier.</p>
+        <form class="grille" onsubmit="return false">
+          <input type="hidden" id="d_id">
+          <div class="f c2"><label for="d_date">Date</label><input type="date" id="d_date"></div>
+          <div class="f c3"><label for="d_categorie">Catégorie</label><select id="d_categorie"></select></div>
+          <div class="f c4"><label for="d_libelle">Élément technique</label><input type="text" id="d_libelle" list="catalogue"></div>
+          <datalist id="catalogue"></datalist>
+          <div class="f c3"><label for="d_personne">Engagée par</label><select id="d_personne"></select></div>
+          <div class="f c2"><label for="d_qte">Quantité</label><input type="number" id="d_qte" step="0.01" min="0" value="0"></div>
+          <div class="f c2"><label for="d_unite">Unité</label><input type="text" id="d_unite" list="unites"></div>
+          <datalist id="unites">
+            <option value="heure-GPU"></option><option value="unité de calcul"></option>
+            <option value="1000 appels API"></option><option value="million de tokens"></option>
+            <option value="Go-mois"></option><option value="mois d'abonnement"></option>
+            <option value="jour-homme"></option><option value="forfait"></option></datalist>
+          <div class="f c2"><label for="d_cout">Coût unitaire</label><input type="number" id="d_cout" step="0.0001" min="0" value="0"></div>
+          <div class="f c3"><label for="d_statut">Statut du montant</label><select id="d_statut">
+            <option value="estime">Estimée</option><option value="mesure">Justifiée, pièce au dossier</option></select></div>
+          <div class="f c3"><label for="d_ref">Référence du justificatif</label><input type="text" id="d_ref"></div>
+          <div class="f c12"><label for="d_note">Note</label><input type="text" id="d_note"></div>
+          <div class="c12 actions">
+            <button class="pleine" id="d_submit" type="button">Ajouter la dépense</button>
+            <button class="vide" id="d_annule" type="button" style="display:none">Annuler</button>
+          </div>
+        </form>
+      </div>
+      <div class="carte"><h2>Dépenses enregistrées</h2><div class="defile"><table id="tDep"></table></div></div>
+    </section>
+
+    <section class="panneau" id="o-personnes">
+      <div class="carte" id="carteFormPers">
+        <h2 id="pTitre">Ajouter un acteur</h2>
+        <p class="sub">Le taux horaire chargé alimente le coût de main d'œuvre. Un acteur non imputable reste traçable comme participant sans peser sur le récapitulatif financier.</p>
+        <form class="grille" onsubmit="return false">
+          <input type="hidden" id="p_id">
+          <div class="f c4"><label for="p_nom">Nom</label><input type="text" id="p_nom"></div>
+          <div class="f c3"><label for="p_org">Organisation</label><input type="text" id="p_org"></div>
+          <div class="f c3"><label for="p_role">Rôle</label><input type="text" id="p_role"></div>
+          <div class="f c2"><label for="p_taux">Taux horaire chargé</label><input type="number" id="p_taux" step="0.01" min="0" value="0"></div>
+          <div class="f c3"><label for="p_imput">Imputable</label><select id="p_imput">
+            <option value="oui">Oui</option><option value="non">Non</option></select></div>
+          <div class="f c9"><label for="p_note">Note</label><input type="text" id="p_note"></div>
+          <div class="c12 actions">
+            <button class="pleine" id="p_submit" type="button">Ajouter l'acteur</button>
+            <button class="vide" id="p_annule" type="button" style="display:none">Annuler</button>
+          </div>
+        </form>
+      </div>
+      <div class="carte"><h2>Acteurs du projet</h2><div class="defile"><table id="tPers"></table></div></div>
+    </section>
+
+    <section class="panneau" id="o-reglages">
+      <div class="carte" id="carteProjet">
+        <h2>Paramètres du projet</h2>
+        <form class="grille" onsubmit="return false">
+          <div class="f c3"><label for="s_code">Code</label><input type="text" id="s_code"></div>
+          <div class="f c5"><label for="s_intitule">Intitulé</label><input type="text" id="s_intitule"></div>
+          <div class="f c4"><label for="s_financeur">Financeur</label><input type="text" id="s_financeur"></div>
+          <div class="f c2"><label for="s_debut">Début</label><input type="date" id="s_debut"></div>
+          <div class="f c2"><label for="s_fin">Fin</label><input type="date" id="s_fin"></div>
+          <div class="f c2"><label for="s_devise">Devise</label><select id="s_devise">
+            <option>EUR</option><option>USD</option><option>CAD</option><option>CHF</option></select></div>
+          <div class="f c3"><label for="s_hj">Heures par jour-homme</label><input type="number" id="s_hj" step="0.5" min="1"></div>
+          <div class="f c3"><label for="s_taux">Taux horaire par défaut</label><input type="number" id="s_taux" step="0.01" min="0"></div>
+          <div class="c12 actions"><button class="pleine" id="s_save" type="button">Enregistrer</button></div>
+        </form>
+      </div>
+      <div class="duo" id="carteReferentiels">
+        <div class="carte">
+          <h2>Types de tâche</h2>
+          <div class="defile"><table id="tTypes"></table></div>
+          <form class="grille" onsubmit="return false" style="margin-top:15px">
+            <div class="f c6"><label for="t_lib">Nouveau type</label><input type="text" id="t_lib"></div>
+            <div class="f c2"><label for="t_col">Couleur</label><input type="color" id="t_col" value="#2F5D45"></div>
+            <div class="c4 actions" style="margin-top:0"><button class="pleine" id="t_add" type="button">Ajouter</button></div>
+          </form>
+        </div>
+        <div class="carte">
+          <h2>Catégories de dépense</h2>
+          <div class="defile"><table id="tCats"></table></div>
+          <form class="grille" onsubmit="return false" style="margin-top:15px">
+            <div class="f c6"><label for="k_lib">Nouvelle catégorie</label><input type="text" id="k_lib"></div>
+            <div class="f c2"><label for="k_col">Couleur</label><input type="color" id="k_col" value="#A8842C"></div>
+            <div class="c4 actions" style="margin-top:0"><button class="pleine" id="k_add" type="button">Ajouter</button></div>
+          </form>
+        </div>
+      </div>
+      <div class="carte" id="carteArtefacts">
+        <h2>Artefacts du tableau de bord</h2>
+        <p class="sub">Choisissez les blocs qui composent les tableaux exportés. Le réglage vaut pour le projet, donc pour le tableau individuel, le consolidé et la liasse.</p>
+        <div id="listeArtefacts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 18px;margin-top:6px"></div>
+        <div class="actions">
+          <button class="pleine" id="art_save" type="button">Enregistrer la sélection</button>
+          <button class="vide" id="art_tous" type="button">Tout cocher</button>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Tableaux de bord</h2>
+        <p class="sub">Fichiers HTML autonomes, sans dépendance ni appel réseau, imprimables en PDF depuis le navigateur. La liasse rassemble un tableau par acteur et le consolidé destiné au financeur.</p>
+        <form class="grille" onsubmit="return false">
+          <div class="f c5"><label for="tb_personne">Tableau individuel</label><select id="tb_personne"></select></div>
+          <div class="c7 actions" style="margin-top:0">
+            <button class="pleine" id="tb_indiv" type="button">Ouvrir le tableau individuel</button>
+            <button class="vide" id="tb_conso" type="button">Ouvrir le consolidé</button>
+            <button class="vide" id="tb_liasse" type="button">Télécharger la liasse complète</button>
+          </div>
+        </form>
+      </div>
+      <div class="carte">
+        <h2>Exports tabulaires</h2>
+        <p class="sub">Fichiers CSV point-virgule avec BOM, lisibles directement dans Excel en français.</p>
+        <div class="actions" style="margin-top:0" id="liensCsv"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ---- administration ---- -->
+  <div class="wrap cache" id="espaceAdmin">
+    <div class="entete">
+      <div><h1>Administration</h1>
+        <div class="filet">Comptes, projets et droits d'accès. Un contributeur ne voit que ses propres lignes, un lecteur consulte sans modifier, un gestionnaire pilote l'ensemble du projet.</div></div>
+      <div class="etat" id="etatAdmin"></div>
+    </div>
+    <div id="messageAdmin" class="encart cache" style="margin-top:20px"></div>
+
+    <div class="carte" style="margin-top:20px">
+      <h2>Synthèse de tous les projets</h2>
+      <div class="defile"><table id="tSyntheseProjets"></table></div>
+    </div>
+
+    <div class="carte">
+      <h2>Créer un projet</h2>
+      <form class="grille" onsubmit="return false">
+        <div class="f c2"><label for="np_code">Code</label><input type="text" id="np_code" placeholder="ACRONYME"></div>
+        <div class="f c4"><label for="np_intitule">Intitulé</label><input type="text" id="np_intitule"></div>
+        <div class="f c3"><label for="np_financeur">Financeur</label><input type="text" id="np_financeur"></div>
+        <div class="f c2"><label for="np_debut">Début</label><input type="date" id="np_debut"></div>
+        <div class="f c2"><label for="np_fin">Fin</label><input type="date" id="np_fin"></div>
+        <div class="f c2"><label for="np_devise">Devise</label><select id="np_devise">
+          <option>EUR</option><option>USD</option><option>CAD</option><option>CHF</option></select></div>
+        <div class="f c2"><label for="np_hj">Heures par jour</label><input type="number" id="np_hj" step="0.5" min="1" value="7"></div>
+        <div class="f c3"><label for="np_taux">Taux horaire par défaut</label><input type="number" id="np_taux" step="0.01" min="0" value="0"></div>
+        <div class="c12 actions"><button class="pleine" id="np_submit" type="button">Créer le projet</button></div>
+      </form>
+    </div>
+
+    <div class="carte">
+      <h2>Créer un compte</h2>
+      <p class="sub">Un mot de passe provisoire est généré et affiché une seule fois. Communiquez-le à la personne, qui le remplacera à sa première connexion.</p>
+      <form class="grille" onsubmit="return false">
+        <div class="f c4"><label for="nu_email">Adresse électronique</label><input type="email" id="nu_email"></div>
+        <div class="f c4"><label for="nu_nom">Nom</label><input type="text" id="nu_nom"></div>
+        <div class="f c2"><label for="nu_role">Rôle global</label><select id="nu_role">
+          <option value="utilisateur">Utilisateur</option><option value="admin">Administrateur</option></select></div>
+        <div class="c2 actions" style="margin-top:0"><button class="pleine" id="nu_submit" type="button">Créer</button></div>
+      </form>
+    </div>
+
+    <div class="carte">
+      <h2>Accorder un accès</h2>
+      <form class="grille" onsubmit="return false">
+        <div class="f c3"><label for="ac_user">Compte</label><select id="ac_user"></select></div>
+        <div class="f c3"><label for="ac_projet">Projet</label><select id="ac_projet"></select></div>
+        <div class="f c2"><label for="ac_role">Rôle sur le projet</label><select id="ac_role">
+          <option value="contributeur">Contributeur</option>
+          <option value="gestionnaire">Gestionnaire</option>
+          <option value="lecteur">Lecteur</option></select></div>
+        <div class="f c2"><label for="ac_personne">Rattaché à l'acteur</label><select id="ac_personne"></select></div>
+        <div class="c2 actions" style="margin-top:0"><button class="pleine" id="ac_submit" type="button">Accorder</button></div>
+      </form>
+    </div>
+
+    <div class="carte">
+      <h2>Comptes et accès</h2>
+      <div class="defile"><table id="tComptes"></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const byId = id => document.getElementById(id);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let MOI = null, PROJETS = [], PROJET_ID = null, E = null, ADMIN = null;
+const filtre = {type:"", pers:"", origine:""};
+
+async function api(chemin, options){
+  const r = await fetch("/api"+chemin, Object.assign(
+    {headers:{"Content-Type":"application/json"}, credentials:"same-origin"}, options||{}));
+  if(r.status === 401){ montrer("connexion"); throw new Error("Session expirée, reconnectez-vous."); }
+  if(!r.ok){
+    let d=""; try{ d=(await r.json()).detail||""; }catch(e){}
+    throw new Error(typeof d === "string" && d ? d : "Erreur "+r.status);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+function montrer(vue){
+  byId("vueConnexion").classList.toggle("cache", vue!=="connexion");
+  byId("vueMotDePasse").classList.toggle("cache", vue!=="motdepasse");
+  byId("vueApp").classList.toggle("cache", vue!=="app" && vue!=="admin");
+  if(vue==="app" || vue==="admin"){
+    byId("espaceProjet").classList.toggle("cache", vue==="admin");
+    byId("espaceAdmin").classList.toggle("cache", vue!=="admin");
+    byId("btnAdmin").setAttribute("aria-pressed", vue==="admin" ? "true":"false");
+  }
+  window.scrollTo({top:0});
+}
+
+function etat(txt, err, cible){
+  const el = byId(cible || "etatTxt");
+  if(!el) return;
+  el.textContent = txt;
+  el.className = "etat" + (err ? " err" : "");
+}
+
+function encart(id, html){
+  const el = byId(id);
+  el.innerHTML = html;
+  el.classList.toggle("cache", !html);
+}
+
+/* ---------- formats ---------- */
+const fmtH = h => (Math.round((h||0)*100)/100).toLocaleString("fr-FR",{maximumFractionDigits:2})+" h";
+function fmtE(v){
+  const d = E && E.projet ? E.projet.devise : "EUR";
+  try{ return new Intl.NumberFormat("fr-FR",{style:"currency",currency:d,maximumFractionDigits:2}).format(v||0); }
+  catch(e){ return (v||0).toFixed(2)+" "+d; }
+}
+const fmtD = s => s ? s.split("-").reverse().join("/") : "";
+const fmtN = (v,n) => (v||0).toLocaleString("fr-FR",{maximumFractionDigits:n===undefined?2:n});
+const typeOf = id => (E.types.find(t=>t.id===id)) || {libelle:"Non classé", couleur:"#C6B99E"};
+const catOf  = id => (E.categories.find(c=>c.id===id)) || {libelle:"Non classée", couleur:"#C6B99E"};
+const persOf = id => (E.personnes.find(p=>p.id===id)) || {nom:"", imputable:true};
+function nomMois(k){ const [y,m]=k.split("-"); return new Date(+y,+m-1,1).toLocaleDateString("fr-FR",{month:"long",year:"numeric"}); }
+
+/* ---------- pastilles, avatars, graphiques ---------- */
+function pilule(libelle, couleur){
+  return '<span class="pilule" style="background:'+couleur+'">'+esc(libelle)+'</span>';
+}
+const COULEURS_AVATAR = ["#0073EA","#00C875","#FDAB3D","#E2445C","#A25DDC","#00C4C4","#5559DF","#7E8DA3"];
+function initiales(nom){
+  const mots = String(nom||"").trim().split(/\s+/).filter(Boolean);
+  if(!mots.length) return "?";
+  return (mots[0][0] + (mots.length>1 ? mots[mots.length-1][0] : "")).toUpperCase();
+}
+function avatar(nom){
+  let somme = 0;
+  for(let i=0;i<String(nom||"").length;i++) somme += nom.charCodeAt(i);
+  const c = COULEURS_AVATAR[somme % COULEURS_AVATAR.length];
+  return '<span class="avatar" style="background:'+c+'" aria-hidden="true">'+esc(initiales(nom))+'</span>';
+}
+function acteur(nom){
+  return '<span class="acteur">'+avatar(nom)+'<span>'+esc(nom)+'</span></span>';
+}
+
+function camembert(parts, centreHaut, centreBas){
+  const total = parts.reduce((s,p)=>s+p.valeur,0);
+  if(total<=0) return '<div class="bande-vide" style="height:180px">Aucune heure imputée.</div>';
+  const R=70, e=26, C=2*Math.PI*R;
+  let offset=0;
+  const arcs = parts.map(p=>{
+    const portion = p.valeur/total*C;
+    const arc = '<circle cx="100" cy="100" r="'+R+'" fill="none" stroke="'+p.couleur+'" stroke-width="'+e+'"'+
+      ' stroke-dasharray="'+(portion-1.5).toFixed(2)+' '+(C-portion+1.5).toFixed(2)+'"'+
+      ' stroke-dashoffset="'+(-offset).toFixed(2)+'" transform="rotate(-90 100 100)">'+
+      '<title>'+esc(p.libelle)+' : '+fmtH(p.valeur)+'</title></circle>';
+    offset += portion;
+    return arc;
+  }).join("");
+  return '<svg viewBox="0 0 200 200" width="100%" height="200" role="img" aria-label="Répartition par type de tâche">'+
+    arcs+
+    '<text x="100" y="95" text-anchor="middle" font-size="25" font-weight="700" fill="#323338" '+
+      'font-family="inherit" letter-spacing="-0.5">'+esc(centreHaut)+'</text>'+
+    '<text x="100" y="116" text-anchor="middle" font-size="11" fill="#676879" font-family="inherit">'+
+      esc(centreBas)+'</text></svg>';
+}
+
+function barresEmpilees(mois, sequences){
+  if(!mois.length) return '<div class="bande-vide" style="height:210px">Aucune donnée mensuelle.</div>';
+  const L=940, H=215, bas=H-26, haut=14;
+  const maxi = Math.max(...mois.map(m=>sequences.reduce((s,seq)=>s+(seq.valeurs[m]||0),0))) || 1;
+  const pas = L/mois.length, largeur = Math.min(pas*0.6, 46);
+  let rects="", socles="", reperes="";
+  [0,0.5,1].forEach(f=>{
+    const y = bas-(bas-haut)*f;
+    reperes += '<line x1="0" y1="'+y.toFixed(1)+'" x2="'+L+'" y2="'+y.toFixed(1)+
+      '" stroke="#E6E9EF" stroke-width="1"/>'+
+      '<text x="0" y="'+(y-5).toFixed(1)+'" font-size="10" fill="#9699A6" font-family="inherit">'+
+      fmtN(maxi*f,0)+' h</text>';
+  });
+  mois.forEach((m,i)=>{
+    const x = i*pas + (pas-largeur)/2;
+    let cumul = 0;
+    sequences.forEach(seq=>{
+      const v = seq.valeurs[m]||0;
+      if(v<=0) return;
+      const h = v/maxi*(bas-haut);
+      cumul += h;
+      const y = bas-cumul;
+      rects += '<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+largeur.toFixed(1)+
+        '" height="'+Math.max(h-1.5,1).toFixed(1)+'" fill="'+seq.couleur+'" rx="2">'+
+        '<title>'+esc(nomMois(m))+', '+esc(seq.libelle)+' : '+fmtH(v)+'</title></rect>';
+    });
+    const etiquette = m.split("-")[1]+"/"+m.split("-")[0].slice(2);
+    socles += '<text x="'+(x+largeur/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" '+
+      'fill="#676879" font-family="inherit">'+etiquette+'</text>';
+  });
+  return '<svg viewBox="0 0 '+L+' '+H+'" width="100%" height="'+H+'" role="img" '+
+    'aria-label="Heures imputées par mois et par type de tâche">'+reperes+rects+socles+'</svg>';
+}
+
+function tableau(cols, lignes, pied){
+  return '<thead><tr>'+cols.map(c=>'<th'+(c.num?' class="num"':'')+'>'+esc(c.t)+'</th>').join("")+'</tr></thead>'+
+    '<tbody>'+(lignes.length?lignes.join(""):'<tr><td colspan="'+cols.length+'" class="vide">Rien à afficher.</td></tr>')+'</tbody>'+
+    (pied?'<tfoot>'+pied+'</tfoot>':'');
+}
+
+/* ---------- connexion ---------- */
+byId("l_submit").addEventListener("click", async ()=>{
+  encart("messageConnexion", "");
+  try{
+    const r = await api("/connexion", {method:"POST", body:JSON.stringify({
+      email: byId("l_email").value.trim(), mot_de_passe: byId("l_mdp").value})});
+    byId("l_mdp").value = "";
+    MOI = r.utilisateur;
+    if(MOI.doit_changer){ byId("champAncien").style.display="none"; montrer("motdepasse"); return; }
+    await demarrer();
+  }catch(e){ encart("messageConnexion", esc(e.message)); }
+});
+byId("l_mdp").addEventListener("keydown", e=>{ if(e.key==="Enter") byId("l_submit").click(); });
+
+byId("btnMdp").addEventListener("click", ()=>{
+  byId("champAncien").style.display = "";
+  encart("messageMdp","");
+  ["m_ancien","m_nouveau","m_confirme"].forEach(i=>byId(i).value="");
+  montrer("motdepasse");
+});
+byId("m_retour").addEventListener("click", ()=>{
+  if(MOI && MOI.doit_changer){ encart("messageMdp","Le mot de passe provisoire doit être remplacé avant d'aller plus loin."); return; }
+  montrer("app");
+});
+byId("m_submit").addEventListener("click", async ()=>{
+  const n = byId("m_nouveau").value, c = byId("m_confirme").value;
+  if(n.length < 8){ encart("messageMdp","Huit caractères au minimum."); return; }
+  if(n !== c){ encart("messageMdp","Les deux saisies diffèrent."); return; }
+  try{
+    await api("/moi/mot-de-passe", {method:"POST",
+      body:JSON.stringify({ancien: byId("m_ancien").value, nouveau:n})});
+    MOI.doit_changer = false;
+    encart("messageMdp","");
+    await demarrer();
+  }catch(e){ encart("messageMdp", esc(e.message)); }
+});
+
+byId("btnSortie").addEventListener("click", async ()=>{
+  try{ await api("/deconnexion", {method:"POST"}); }catch(e){}
+  MOI = null; E = null;
+  byId("l_email").value = ""; byId("l_mdp").value = "";
+  montrer("connexion");
+});
+
+/* ---------- démarrage ---------- */
+async function demarrer(){
+  const r = await api("/moi");
+  MOI = r.utilisateur; PROJETS = r.projets;
+  byId("identite").textContent = MOI.nom || MOI.email;
+  byId("btnAdmin").classList.toggle("cache", MOI.role_global !== "admin");
+  if(!PROJETS.length){
+    montrer("app");
+    byId("titreProjet").textContent = "Aucun projet ne vous est ouvert";
+    byId("filetProjet").textContent = MOI.role_global === "admin"
+      ? "Créez un projet depuis l'administration."
+      : "Demandez à l'administration de vous accorder un accès.";
+    byId("espaceProjet").querySelectorAll(".bande,.legende,.indicateurs,nav.onglets,.panneau")
+      .forEach(x=>x.classList.add("cache"));
+    if(MOI.role_global === "admin") ouvrirAdmin();
+    return;
+  }
+  byId("selProjet").innerHTML = PROJETS.map(p=>
+    '<option value="'+p.id+'">'+esc(p.intitule)+'</option>').join("");
+  PROJET_ID = PROJETS[0].id;
+  byId("selProjet").value = PROJET_ID;
+  montrer("app");
+  await charger();
+}
+
+byId("selProjet").addEventListener("change", async e=>{
+  PROJET_ID = +e.target.value;
+  filtre.type = filtre.pers = filtre.origine = "";
+  montrer("app");
+  await charger();
+});
+
+async function charger(message){
+  try{
+    E = await api("/projets/"+PROJET_ID+"/etat");
+    rendre();
+    etat(message || "Base à jour, " + new Date().toLocaleTimeString("fr-FR"));
+  }catch(e){ etat("La base ne répond pas : "+e.message, true); }
+}
+
+async function envoyer(fn, message){
+  try{ await fn(); await charger(message); }
+  catch(e){ etat(e.message, true); alert(e.message); }
+}
+
+/* ---------- rendu de l'en-tête ---------- */
+function rendreEntete(){
+  const p = E.projet, R = E.recapitulatif, T = R.totaux;
+  byId("titreProjet").textContent = p.intitule;
+  const roles = {gestionnaire:"pilotage", contributeur:"contribution", lecteur:"consultation"};
+  byId("filetProjet").textContent =
+    (p.financeur ? p.financeur + ". " : "") +
+    "Période du " + fmtD(p.date_debut) + " au " + fmtD(p.date_fin) + ". " +
+    "Votre accès : " + (roles[p.role] || p.role) + "." +
+    (E.droits.restreint ? " Vous ne voyez que vos propres lignes." : "");
+
+  /* indicateurs */
+  const blocs = [
+    '<div class="v">'+fmtH(T.imputees)+'</div><div class="l">heures imputées, sur '+fmtH(T.heures)+' enregistrées</div>',
+    '<div class="v">'+fmtN(T.jours_homme)+'</div><div class="l">jours-homme à '+fmtN(p.heures_jour,1)+' h</div>'
+  ];
+  if(!E.droits.restreint){
+    blocs.push('<div class="v">'+T.acteurs+'</div><div class="l">acteurs déclarés</div>');
+    blocs.push('<div class="v">'+fmtE(T.cout_main_oeuvre)+'</div><div class="l">coût de main d\'œuvre</div>');
+    blocs.push('<div class="v">'+fmtE(T.depenses)+'</div><div class="l">dépenses techniques</div>');
+  }
+  blocs.push('<div class="v">'+fmtN(T.part_mesuree,0)+'&nbsp;%</div><div class="l">des heures adossées à une durée mesurée</div>');
+  let html = blocs.map(b=>'<div class="indic">'+b+'</div>').join("");
+  if(!E.droits.restreint){
+    html += '<div class="indic" style="border-top-color:var(--vert);grid-column:span 2">'+
+      '<div class="l" style="margin:0 0 6px">Total engagé à date</div>'+
+      '<div class="grand-nombre">'+fmtE(T.total)+'</div>'+
+      '<div class="l">dont '+fmtE(T.depenses_justifiees)+' de dépenses justifiées par une pièce</div></div>';
+  }
+  byId("indicateurs").innerHTML = html;
+
+  /* camembert par type de tâche */
+  const parts = E.types.map(t=>R.par_type.find(x=>x.id===t.id))
+    .filter(x=>x && x.imputees>0)
+    .map(x=>({libelle:x.libelle, valeur:x.imputees, couleur:x.couleur}));
+  const tot = parts.reduce((s,x)=>s+x.valeur,0);
+  byId("camembert").innerHTML = camembert(parts, fmtN(T.jours_homme,1), "jours-homme");
+  byId("legende").innerHTML = parts.length
+    ? parts.map(x=>'<span><span class="pastille" style="background:'+x.couleur+'"></span>'+
+        esc(x.libelle)+' <b>'+fmtH(x.valeur)+'</b> <span class="muted">'+
+        (x.valeur/tot*100).toFixed(0)+'&nbsp;%</span></span>').join("")
+    : '';
+
+  /* barres mensuelles empilées par type */
+  const cumuls = {}, moisVus = new Set();
+  E.activites.forEach(a=>{
+    const m = a.date.slice(0,7);
+    moisVus.add(m);
+    cumuls[a.type_tache_id] = cumuls[a.type_tache_id] || {};
+    cumuls[a.type_tache_id][m] = (cumuls[a.type_tache_id][m]||0) + a.heures_imputees;
+  });
+  const mois = [...moisVus].sort();
+  const sequences = E.types.filter(t=>cumuls[t.id])
+    .map(t=>({libelle:t.libelle, couleur:t.couleur, valeurs:cumuls[t.id]}));
+  byId("barresMois").innerHTML = barresEmpilees(mois, sequences);
+}
+
+/* ---------- récapitulatif ---------- */
+function rendreRecap(){
+  const R = E.recapitulatif, p = E.projet, T = R.totaux;
+  byId("listeAvis").innerHTML = R.alertes.length
+    ? R.alertes.map(a=>'<li>'+esc(a.texte)+'</li>').join("")
+    : '<li class="serein">Aucune zone grise détectée sur ce périmètre. Le récapitulatif est transmissible en l\'état.</li>';
+
+  const cache = E.droits.restreint;
+  const colsType = [{t:"Type de tâche"},{t:"Lignes",num:1},{t:"Heures",num:1},{t:"Imputées",num:1},{t:"Part",num:1}];
+  if(!cache) colsType.push({t:"Coût",num:1});
+  const totImp = R.par_type.reduce((s,t)=>s+t.imputees,0);
+  byId("tType").innerHTML = tableau(colsType,
+    R.par_type.map(t=>'<tr><td>'+pilule(t.libelle, t.couleur)+'</td>'+
+      '<td class="num">'+t.n+'</td><td class="num">'+fmtH(t.heures)+'</td><td class="num">'+fmtH(t.imputees)+'</td>'+
+      '<td class="num">'+(totImp?(t.imputees/totImp*100).toFixed(0):0)+'&nbsp;%</td>'+
+      (cache?"":'<td class="num">'+fmtE(t.cout)+'</td>')+'</tr>'),
+    '<tr><th>Total</th><th class="num">'+R.par_type.reduce((s,t)=>s+t.n,0)+'</th>'+
+    '<th class="num">'+fmtH(T.heures)+'</th><th class="num">'+fmtH(T.imputees)+'</th>'+
+    '<th class="num">100&nbsp;%</th>'+(cache?"":'<th class="num">'+fmtE(T.cout_main_oeuvre)+'</th>')+'</tr>');
+
+  const colsPers = [{t:"Acteur"},{t:"Organisation"},{t:"Lignes",num:1},{t:"Heures imputées",num:1},{t:"Jours-homme",num:1}];
+  if(!cache) colsPers.push({t:"Coût",num:1});
+  byId("tPersRecap").innerHTML = tableau(colsPers,
+    R.par_personne.map(x=>'<tr><td>'+acteur(x.nom)+(x.imputable?"":' <span class="etiq">non imputable</span>')+'</td>'+
+      '<td class="muted">'+esc(x.organisation)+'</td><td class="num">'+x.n+'</td>'+
+      '<td class="num">'+fmtH(x.imputees)+'</td><td class="num">'+fmtN(x.jours_homme)+'</td>'+
+      (cache?"":'<td class="num">'+fmtE(x.cout)+'</td>')+'</tr>'),
+    '<tr><th>Total</th><th></th><th class="num">'+R.par_personne.reduce((s,x)=>s+x.n,0)+'</th>'+
+    '<th class="num">'+fmtH(T.imputees)+'</th><th class="num">'+fmtN(T.jours_homme)+'</th>'+
+    (cache?"":'<th class="num">'+fmtE(T.cout_main_oeuvre)+'</th>')+'</tr>');
+
+  byId("tCatRecap").innerHTML = tableau(
+    [{t:"Catégorie"},{t:"Lignes",num:1},{t:"Montant",num:1},{t:"Dont justifié",num:1}],
+    R.par_categorie.map(c=>'<tr><td>'+pilule(c.libelle, c.couleur)+'</td>'+
+      '<td class="num">'+c.n+'</td><td class="num">'+fmtE(c.montant)+'</td><td class="num">'+fmtE(c.justifie)+'</td></tr>'),
+    '<tr><th>Total</th><th class="num">'+R.par_categorie.reduce((s,c)=>s+c.n,0)+'</th>'+
+    '<th class="num">'+fmtE(T.depenses)+'</th><th class="num">'+fmtE(T.depenses_justifiees)+'</th></tr>');
+
+  byId("tMois").innerHTML = tableau(
+    [{t:"Mois"},{t:"Lignes",num:1},{t:"Heures imputées",num:1},{t:"Main d'œuvre",num:1},{t:"Technique",num:1}],
+    R.par_mois.map(m=>'<tr><td>'+esc(nomMois(m.mois))+'</td><td class="num">'+m.n+'</td>'+
+      '<td class="num">'+fmtH(m.imputees)+'</td><td class="num">'+fmtE(m.cout)+'</td>'+
+      '<td class="num">'+fmtE(m.depenses)+'</td></tr>'));
+
+  byId("tSynth").innerHTML = tableau([{t:"Poste"},{t:"Assiette"},{t:"Montant",num:1}],
+    ['<tr><td>Main d\'œuvre imputée</td><td>'+fmtH(T.imputees)+', soit '+fmtN(T.jours_homme)+
+       ' jours-homme à '+fmtN(p.heures_jour,1)+' h</td><td class="num">'+fmtE(T.cout_main_oeuvre)+'</td></tr>',
+     '<tr><td>Dépenses techniques justifiées</td><td>pièce au dossier</td><td class="num">'+fmtE(T.depenses_justifiees)+'</td></tr>',
+     '<tr><td>Dépenses techniques estimées</td><td>sans pièce à ce stade</td><td class="num">'+fmtE(T.depenses-T.depenses_justifiees)+'</td></tr>'],
+    '<tr><th>Total à date</th><th></th><th class="num">'+fmtE(T.total)+'</th></tr>');
+}
+
+/* ---------- temps ---------- */
+function rendreTemps(){
+  byId("fType").innerHTML = '<option value="">Tous les types</option>'+
+    E.types.map(t=>'<option value="'+t.id+'">'+esc(t.libelle)+'</option>').join("");
+  byId("fType").value = filtre.type;
+  byId("fPers").innerHTML = '<option value="">Tous les acteurs</option>'+
+    E.personnes.map(p=>'<option value="'+p.id+'">'+esc(p.nom)+'</option>').join("");
+  byId("fPers").value = filtre.pers;
+  byId("fOrigine").value = filtre.origine;
+
+  const lignes = E.activites.filter(a =>
+    (!filtre.type || a.type_tache_id===+filtre.type) &&
+    (!filtre.pers || a.personne_id===+filtre.pers) &&
+    (!filtre.origine
+      || (filtre.origine==="rec" ? !!a.recurrence_id
+        : filtre.origine==="rep" ? !!a.reportee
+        : filtre.origine==="att" ? (a.statut==="estime" && a.heures>0)
+        : filtre.origine==="val" ? !!a.validee
+        : !a.recurrence_id)));
+  byId("fCompte").textContent = lignes.length+" ligne(s), "+
+    fmtH(lignes.reduce((s,a)=>s+a.heures_imputees,0))+" imputées";
+
+  const cache = E.droits.restreint;
+  const modifiable = !E.droits.lecture_seule;
+  const cols = [{t:"Date",num:1},{t:"Horaires",num:1},{t:"Libellé"},{t:"Type"},{t:"Acteur"},
+                {t:"Livrable"},{t:"Durée",num:1},{t:"Part",num:1},{t:"Imputé",num:1}];
+  if(!cache) cols.push({t:"Coût",num:1});
+  cols.push({t:""});
+
+  byId("tAct").innerHTML = tableau(cols, lignes.map(a=>{
+    const t = typeOf(a.type_tache_id), b=[];
+    if(a.mixte) b.push('<span class="etiq att">mixte</span>');
+    if(a.statut==="estime") b.push('<span class="etiq">durée estimée</span>');
+    if(a.heures<=0) b.push('<span class="etiq att">sans durée</span>');
+    if(a.recurrence_id) b.push('<span class="etiq or">récurrente</span>');
+    if(a.reportee) b.push('<span class="etiq att">reportée du '+fmtD(a.date_theorique)+'</span>');
+    if(a.source==="declaratif") b.push('<span class="etiq">déclaratif</span>');
+    if(a.validee) b.push('<span class="etiq ok">validée le '+fmtD(a.valide_le.slice(0,10))+
+      (a.valide_par?' par '+esc(a.valide_par):'')+'</span>');
+    let outils = modifiable
+      ? '<button class="mini" data-ea="'+a.id+'">Modifier</button>'+
+        '<button class="mini" data-da="'+a.id+'">Dupliquer</button>'+
+        '<button class="mini rouge" data-xa="'+a.id+'">Supprimer</button>'
+      : '<span class="muted">lecture</span>';
+    if(E.droits.pilote){
+      if(a.statut==="estime" && a.heures>0)
+        outils = '<button class="mini" data-va="'+a.id+'" style="color:var(--vert);font-weight:600">Valider</button>'+outils;
+      else if(a.validee)
+        outils = '<button class="mini" data-na="'+a.id+'">Dévalider</button>'+outils;
+    }
+    return '<tr><td class="num">'+fmtD(a.date)+'</td>'+
+      '<td class="num muted">'+esc(a.heure_debut)+(a.heure_fin?'&nbsp;–&nbsp;'+esc(a.heure_fin):'')+'</td>'+
+      '<td>'+esc(a.libelle)+(a.note?'<br><span class="muted" style="font-size:12px">'+esc(a.note)+'</span>':'')+
+        (b.length?'<br>'+b.join(""):'')+'</td>'+
+      '<td>'+pilule(t.libelle, t.couleur)+'</td>'+
+      '<td>'+acteur(persOf(a.personne_id).nom)+'</td><td>'+esc(a.livrable)+'</td>'+
+      '<td class="num">'+fmtH(a.heures)+'</td><td class="num">'+fmtN(a.part_imputable,0)+'&nbsp;%</td>'+
+      '<td class="num">'+fmtH(a.heures_imputees)+'</td>'+
+      (cache?"":'<td class="num">'+fmtE(a.cout)+'</td>')+
+      '<td class="num">'+outils+'</td></tr>';
+  }),
+  '<tr><th colspan="8">Total affiché</th><th class="num">'+
+   fmtH(lignes.reduce((s,a)=>s+a.heures_imputees,0))+'</th>'+
+   (cache?"":'<th class="num">'+fmtE(lignes.reduce((s,a)=>s+a.cout,0))+'</th>')+'<th></th></tr>');
+
+  rendreBandeauValidation(lignes);
+}
+
+/* Validation en masse : porte sur les lignes actuellement affichées, pour que
+   la sélection soit celle que l'écran montre et non une sélection invisible. */
+function rendreBandeauValidation(lignes){
+  const cible = byId("bandeauValidation");
+  if(!E.droits.pilote){ cible.innerHTML = ""; return; }
+  const attente = lignes.filter(a=>a.statut==="estime" && a.heures>0);
+  const sansDuree = lignes.filter(a=>a.statut==="estime" && a.heures<=0);
+  if(!attente.length && !sansDuree.length){ cible.innerHTML = ""; return; }
+  const heures = attente.reduce((s,a)=>s+a.heures_imputees,0);
+  let texte = "";
+  if(attente.length)
+    texte += '<strong>'+attente.length+' durée(s) estimée(s)</strong> parmi les lignes affichées, '+
+      'soit '+fmtH(heures)+'. Les valider les fera compter comme durées retenues, avec votre nom et la date en trace.';
+  if(sansDuree.length)
+    texte += (texte?'<br>':'')+sansDuree.length+' ligne(s) sans durée seront écartées : renseignez '+
+      'la durée avant de les valider.';
+  cible.innerHTML = '<div class="encart" style="background:var(--jaune-voile);border-left-color:var(--jaune)">'+
+    texte+(attente.length?'<div class="actions" style="margin-top:11px">'+
+      '<button class="pleine" id="valMasse" style="background:var(--vert)">Valider les '+
+      attente.length+' estimation(s) affichée(s)</button></div>':'')+'</div>';
+  const bouton = byId("valMasse");
+  if(bouton) bouton.addEventListener("click", ()=>{
+    if(!confirm("Valider "+attente.length+" ligne(s) ? Leur durée estimée deviendra une durée retenue.")) return;
+    envoyer(async ()=>{
+      const r = await api("/projets/"+PROJET_ID+"/activites/valider", {method:"POST",
+        body:JSON.stringify({ids: attente.map(a=>a.id)})});
+      if(r.ecartees && r.ecartees.length)
+        alert(r.validees+" ligne(s) validée(s). Écartées faute de durée : "+r.ecartees.join(" ; "));
+    }, "Estimations validées");
+  });
+}
+
+function litAct(){
+  return {date: byId("a_date").value, heure_debut: byId("a_debut").value, heure_fin: byId("a_fin").value,
+    duree_h: byId("a_duree").value==="" ? null : Number(byId("a_duree").value),
+    libelle: byId("a_libelle").value.trim(), livrable: byId("a_livrable").value.trim(),
+    part_imputable: Number(byId("a_part").value)||0, source: byId("a_source").value,
+    statut: byId("a_statut").value, mixte: byId("a_mixte").value==="oui",
+    note: byId("a_note").value.trim(), type_tache_id: +byId("a_type").value,
+    personne_id: +byId("a_personne").value};
+}
+function ecritAct(a){
+  byId("a_id").value = a.id||"";
+  byId("a_date").value = a.date||new Date().toISOString().slice(0,10);
+  byId("a_debut").value = a.heure_debut||""; byId("a_fin").value = a.heure_fin||"";
+  byId("a_duree").value = (a.duree_h===null||a.duree_h===undefined)?"":a.duree_h;
+  byId("a_libelle").value = a.libelle||""; byId("a_livrable").value = a.livrable||"";
+  byId("a_part").value = a.part_imputable===undefined?100:a.part_imputable;
+  byId("a_source").value = a.source||"agenda"; byId("a_statut").value = a.statut||"mesure";
+  byId("a_mixte").value = a.mixte?"oui":"non"; byId("a_note").value = a.note||"";
+  byId("a_type").value = a.type_tache_id||(E.types[0]||{}).id;
+  byId("a_personne").value = a.personne_id||E.droits.personne_id||(E.personnes[0]||{}).id;
+}
+function resetAct(){
+  ecritAct({}); byId("a_id").value="";
+  byId("tTitre").textContent="Ajouter du temps passé";
+  byId("a_submit").textContent="Ajouter la ligne";
+  byId("a_annule").style.display="none";
+}
+
+/* ---------- récurrences ---------- */
+function rendreRec(){
+  const modifiable = !E.droits.lecture_seule;
+  byId("tRec").innerHTML = tableau(
+    [{t:"Libellé"},{t:"Règle"},{t:"Fenêtre"},{t:"Type"},{t:"Acteur"},{t:"Durée",num:1},
+     {t:"Part",num:1},{t:"Séances",num:1},{t:"Reports",num:1},{t:""}],
+    E.recurrences.map(r=>{
+      const t = typeOf(r.type_tache_id);
+      const reports = r.reporter
+        ? E.activites.filter(a=>a.recurrence_id===r.id && a.reportee).length
+        : '<span class="muted">désactivé</span>';
+      const outils = modifiable
+        ? '<button class="mini" data-er="'+r.id+'">Modifier</button>'+
+          '<button class="mini" data-gr="'+r.id+'">Regénérer</button>'+
+          '<button class="mini rouge" data-xr="'+r.id+'">Supprimer</button>'
+        : '<span class="muted">lecture</span>';
+      return '<tr><td>'+esc(r.libelle)+(r.note?'<br><span class="muted" style="font-size:12px">'+esc(r.note)+'</span>':'')+'</td>'+
+        '<td>'+esc(r.regle)+'</td><td class="num">'+fmtD(r.date_debut)+'<br>'+fmtD(r.date_fin)+'</td>'+
+        '<td>'+pilule(t.libelle, t.couleur)+'</td>'+
+        '<td>'+acteur(persOf(r.personne_id).nom)+'</td><td class="num">'+fmtH(r.duree_h)+'</td>'+
+        '<td class="num">'+fmtN(r.part_imputable,0)+'&nbsp;%</td><td class="num">'+r.occurrences+'</td>'+
+        '<td class="num">'+reports+'</td><td class="num">'+outils+'</td></tr>';
+    }));
+}
+function litRec(){
+  return {libelle: byId("r_libelle").value.trim(), jour_semaine:+byId("r_jour").value,
+    rang:+byId("r_rang").value, date_debut: byId("r_debut").value, date_fin: byId("r_fin").value,
+    duree_h: Number(byId("r_duree").value)||0, part_imputable: Number(byId("r_part").value)||0,
+    heure_debut:"", heure_fin:"", statut: byId("r_statut").value, source:"declaratif",
+    reporter: byId("r_reporter").value==="oui", livrable:"", note: byId("r_note").value.trim(),
+    active:true, type_tache_id:+byId("r_type").value, personne_id:+byId("r_personne").value};
+}
+function resetRec(){
+  byId("r_id").value=""; byId("r_libelle").value="";
+  byId("r_jour").value="0"; byId("r_rang").value="1";
+  byId("r_debut").value=E.projet.date_debut; byId("r_fin").value=E.projet.date_fin;
+  byId("r_duree").value=E.projet.heures_jour; byId("r_part").value=100;
+  byId("r_statut").value="estime"; byId("r_reporter").value="oui"; byId("r_note").value="";
+  if(E.droits.personne_id) byId("r_personne").value = E.droits.personne_id;
+  byId("rTitre").textContent="Ajouter une règle de récurrence";
+  byId("r_submit").textContent="Créer la règle et générer les séances";
+  byId("r_annule").style.display="none";
+}
+
+/* ---------- dépenses ---------- */
+function rendreDep(){
+  byId("catalogue").innerHTML = [...new Set(E.depenses.map(d=>d.libelle))]
+    .map(v=>'<option value="'+esc(v)+'"></option>').join("");
+  const modifiable = !E.droits.lecture_seule;
+  byId("tDep").innerHTML = tableau(
+    [{t:"Date",num:1},{t:"Catégorie"},{t:"Élément technique"},{t:"Engagée par"},
+     {t:"Quantité",num:1},{t:"Unité"},{t:"Coût unitaire",num:1},{t:"Montant",num:1},{t:""}],
+    E.depenses.map(d=>{
+      const c = catOf(d.categorie_id);
+      const badge = d.statut==="mesure" ? '<span class="etiq ok">justifiée</span>' : '<span class="etiq">estimée</span>';
+      const outils = modifiable
+        ? '<button class="mini" data-ed="'+d.id+'">Modifier</button>'+
+          '<button class="mini rouge" data-xd="'+d.id+'">Supprimer</button>'
+        : '<span class="muted">lecture</span>';
+      return '<tr><td class="num">'+fmtD(d.date)+'</td>'+
+        '<td>'+pilule(c.libelle, c.couleur)+'</td>'+
+        '<td>'+esc(d.libelle)+(d.note?'<br><span class="muted" style="font-size:12px">'+esc(d.note)+'</span>':'')+
+        '<br>'+badge+(d.reference?'<span class="muted" style="font-size:12px">'+esc(d.reference)+'</span>':'')+'</td>'+
+        '<td>'+esc(d.personne_id?persOf(d.personne_id).nom:"")+'</td>'+
+        '<td class="num">'+fmtN(d.quantite)+'</td><td>'+esc(d.unite)+'</td>'+
+        '<td class="num">'+fmtE(d.cout_unitaire)+'</td><td class="num">'+fmtE(d.montant)+'</td>'+
+        '<td class="num">'+outils+'</td></tr>';
+    }),
+    '<tr><th colspan="7">Total</th><th class="num">'+fmtE(E.recapitulatif.totaux.depenses)+'</th><th></th></tr>');
+}
+function litDep(){
+  return {date: byId("d_date").value, categorie_id:+byId("d_categorie").value,
+    libelle: byId("d_libelle").value.trim(),
+    personne_id: byId("d_personne").value ? +byId("d_personne").value : null,
+    quantite: Number(byId("d_qte").value)||0, unite: byId("d_unite").value.trim(),
+    cout_unitaire: Number(byId("d_cout").value)||0, statut: byId("d_statut").value,
+    reference: byId("d_ref").value.trim(), note: byId("d_note").value.trim()};
+}
+function resetDep(){
+  byId("d_id").value=""; byId("d_date").value=new Date().toISOString().slice(0,10);
+  if(E.categories[0]) byId("d_categorie").value=E.categories[0].id;
+  byId("d_libelle").value="";
+  byId("d_personne").value = E.droits.personne_id || (E.personnes[0]||{}).id || "";
+  byId("d_qte").value=0; byId("d_unite").value=""; byId("d_cout").value=0;
+  byId("d_statut").value="estime"; byId("d_ref").value=""; byId("d_note").value="";
+  byId("dTitre").textContent="Ajouter une dépense technique";
+  byId("d_submit").textContent="Ajouter la dépense";
+  byId("d_annule").style.display="none";
+}
+
+/* ---------- personnes ---------- */
+function rendrePers(){
+  const charge = {};
+  E.activites.forEach(a=>{ charge[a.personne_id]=(charge[a.personne_id]||0)+a.heures_imputees; });
+  const pilote = E.droits.pilote;
+  byId("tPers").innerHTML = tableau(
+    [{t:"Nom"},{t:"Organisation"},{t:"Rôle"},{t:"Imputable"},{t:"Taux horaire",num:1},
+     {t:"Heures imputées",num:1},{t:""}],
+    E.personnes.map(p=>'<tr><td>'+acteur(p.nom)+
+      (p.note?'<br><span class="muted" style="font-size:12px">'+esc(p.note)+'</span>':'')+'</td>'+
+      '<td>'+esc(p.organisation)+'</td><td>'+esc(p.role)+'</td>'+
+      '<td>'+(p.imputable?'<span class="etiq ok">oui</span>':'<span class="etiq">non</span>')+'</td>'+
+      '<td class="num">'+(p.taux_horaire>0?fmtE(p.taux_horaire):'<span class="muted">à renseigner</span>')+'</td>'+
+      '<td class="num">'+fmtH(charge[p.id]||0)+'</td>'+
+      '<td class="num">'+(pilote
+        ? '<button class="mini" data-ep="'+p.id+'">Modifier</button>'+
+          '<button class="mini rouge" data-xp="'+p.id+'">Supprimer</button>'
+        : '<span class="muted">lecture</span>')+'</td></tr>'));
+}
+function resetPers(){
+  ["p_id","p_nom","p_org","p_role","p_note"].forEach(i=>byId(i).value="");
+  byId("p_taux").value=0; byId("p_imput").value="oui";
+  byId("pTitre").textContent="Ajouter un acteur";
+  byId("p_submit").textContent="Ajouter l'acteur";
+  byId("p_annule").style.display="none";
+}
+
+/* ---------- réglages ---------- */
+const ARTEFACTS = [
+  ["indicateurs","Bandeau d'indicateurs"],
+  ["total","Grand total engagé"],
+  ["anneau","Anneau de répartition par type de tâche"],
+  ["barres","Histogramme mensuel empilé"],
+  ["statuts","Vue d'ensemble par statut de durée"],
+  ["chronologie","Chronologie d'engagement des acteurs"],
+  ["types","Tableau par type de tâche"],
+  ["acteurs","Plan de charge et tableau par acteur"],
+  ["depenses","Tableau des dépenses techniques"],
+  ["detail","Détail des lignes de temps"],
+  ["reserves","Points à arbitrer"]
+];
+function artefactsCoches(){
+  return ARTEFACTS.map(([c])=>c).filter(c=>{
+    const b = byId("art_"+c); return b && b.checked;
+  });
+}
+function rendreArtefacts(){
+  const retenus = (E.projet.artefacts_tableau||"").split(",").filter(Boolean);
+  const actifs = retenus.length ? retenus : ARTEFACTS.map(([c])=>c);
+  byId("listeArtefacts").innerHTML = ARTEFACTS.map(([c,l])=>
+    '<label style="display:flex;gap:9px;align-items:center;font-size:13.5px;cursor:pointer">'+
+    '<input type="checkbox" id="art_'+c+'" style="width:auto;margin:0"'+
+    (actifs.indexOf(c)>=0?" checked":"")+'>'+esc(l)+'</label>').join("");
+  byId("carteArtefacts").classList.toggle("cache", !E.droits.pilote);
+}
+
+function rendreReglages(){
+  const p = E.projet, pilote = E.droits.pilote;
+  byId("s_code").value=p.code; byId("s_intitule").value=p.intitule;
+  byId("s_financeur").value=p.financeur; byId("s_debut").value=p.date_debut;
+  byId("s_fin").value=p.date_fin; byId("s_devise").value=p.devise;
+  byId("s_hj").value=p.heures_jour; byId("s_taux").value=p.taux_defaut;
+  byId("carteProjet").classList.toggle("cache", !pilote);
+  byId("carteReferentiels").classList.toggle("cache", !pilote);
+
+  byId("tTypes").innerHTML = tableau([{t:"Type"},{t:"Couleur"},{t:"Lignes",num:1},{t:""}],
+    E.types.map(t=>{
+      const n = E.activites.filter(a=>a.type_tache_id===t.id).length;
+      return '<tr><td><input type="text" value="'+esc(t.libelle)+'" data-tl="'+t.id+'"></td>'+
+        '<td><input type="color" value="'+t.couleur+'" data-tc="'+t.id+'" style="width:54px;padding:2px"></td>'+
+        '<td class="num">'+n+'</td><td class="num">'+
+        (n?'<span class="muted" style="font-size:12px">rattaché</span>'
+          :'<button class="mini rouge" data-xt="'+t.id+'">Supprimer</button>')+'</td></tr>';
+    }));
+  byId("tCats").innerHTML = tableau([{t:"Catégorie"},{t:"Couleur"},{t:"Lignes",num:1},{t:""}],
+    E.categories.map(c=>{
+      const n = E.depenses.filter(d=>d.categorie_id===c.id).length;
+      return '<tr><td><input type="text" value="'+esc(c.libelle)+'" data-kl="'+c.id+'"></td>'+
+        '<td><input type="color" value="'+c.couleur+'" data-kc="'+c.id+'" style="width:54px;padding:2px"></td>'+
+        '<td class="num">'+n+'</td><td class="num">'+
+        (n?'<span class="muted" style="font-size:12px">rattachée</span>'
+          :'<button class="mini rouge" data-xk="'+c.id+'">Supprimer</button>')+'</td></tr>';
+    }));
+
+  byId("tb_personne").innerHTML = E.personnes
+    .filter(x=>E.activites.some(a=>a.personne_id===x.id))
+    .map(x=>'<option value="'+x.id+'">'+esc(x.nom)+'</option>').join("")
+    || '<option value="">Aucun acteur avec des lignes</option>';
+  if(E.droits.personne_id) byId("tb_personne").value = E.droits.personne_id;
+  rendreArtefacts();
+  byId("tb_conso").classList.toggle("cache", E.droits.restreint);
+  byId("tb_liasse").classList.toggle("cache", !E.droits.pilote);
+
+  const base = "/api/projets/"+PROJET_ID+"/export/";
+  byId("liensCsv").innerHTML =
+    '<a class="vide" href="'+base+'temps.csv">Temps passé</a>'+
+    '<a class="vide" href="'+base+'depenses.csv">Dépenses</a>'+
+    '<a class="vide" href="'+base+'synthese.csv">Synthèse</a>';
+}
+
+/* ---------- sélecteurs et rendu global ---------- */
+function remplirSelects(){
+  const optT = E.types.map(t=>'<option value="'+t.id+'">'+esc(t.libelle)+'</option>').join("");
+  const optC = E.categories.map(c=>'<option value="'+c.id+'">'+esc(c.libelle)+'</option>').join("");
+  let personnes = E.personnes;
+  if(E.droits.restreint) personnes = personnes.filter(p=>p.id===E.droits.personne_id);
+  const optP = personnes.map(p=>'<option value="'+p.id+'">'+esc(p.nom)+
+    (p.imputable?"":" (non imputable)")+'</option>').join("");
+  [["a_type",optT],["r_type",optT],["a_personne",optP],["d_personne",optP],
+   ["r_personne",optP],["d_categorie",optC]].forEach(([id,html])=>{
+    const el=byId(id), v=el.value; el.innerHTML=html; if(v) el.value=v;
+  });
+}
+
+function rendre(){
+  remplirSelects();
+  rendreEntete(); rendreRecap(); rendreTemps(); rendreRec(); rendreDep();
+  rendrePers(); rendreReglages();
+  const ecriture = !E.droits.lecture_seule;
+  byId("carteFormTemps").classList.toggle("cache", !ecriture);
+  byId("carteFormRec").classList.toggle("cache", !ecriture);
+  byId("carteFormDep").classList.toggle("cache", !ecriture);
+  byId("carteFormPers").classList.toggle("cache", !E.droits.pilote);
+  resetAct(); resetDep(); resetPers(); resetRec();
+}
+
+/* ---------- onglets ---------- */
+document.querySelectorAll("nav.onglets button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("nav.onglets button").forEach(x=>
+    x.setAttribute("aria-selected", x===b?"true":"false"));
+  document.querySelectorAll("#espaceProjet .panneau").forEach(p=>p.classList.remove("on"));
+  byId("o-"+b.dataset.onglet).classList.add("on");
+  window.scrollTo({top:0});
+}));
+
+/* ---------- soumissions projet ---------- */
+byId("a_submit").addEventListener("click",()=>{
+  const v = litAct();
+  if(!v.date || !v.libelle){ alert("La date et le libellé sont nécessaires."); return; }
+  const id = byId("a_id").value;
+  envoyer(()=>api("/projets/"+PROJET_ID+"/activites"+(id?"/"+id:""),
+    {method:id?"PUT":"POST", body:JSON.stringify(v)}), id?"Ligne modifiée":"Ligne ajoutée");
+});
+byId("a_annule").addEventListener("click",resetAct);
+
+byId("d_submit").addEventListener("click",()=>{
+  const v = litDep();
+  if(!v.date || !v.libelle){ alert("La date et l'élément technique sont nécessaires."); return; }
+  const id = byId("d_id").value;
+  envoyer(()=>api("/projets/"+PROJET_ID+"/depenses"+(id?"/"+id:""),
+    {method:id?"PUT":"POST", body:JSON.stringify(v)}), id?"Dépense modifiée":"Dépense ajoutée");
+});
+byId("d_annule").addEventListener("click",resetDep);
+
+byId("p_submit").addEventListener("click",()=>{
+  const nom = byId("p_nom").value.trim();
+  if(!nom){ alert("Le nom est nécessaire."); return; }
+  const v = {nom:nom, organisation:byId("p_org").value.trim(), role:byId("p_role").value.trim(),
+    taux_horaire:Number(byId("p_taux").value)||0, imputable:byId("p_imput").value==="oui",
+    note:byId("p_note").value.trim()};
+  const id = byId("p_id").value;
+  envoyer(()=>api("/projets/"+PROJET_ID+"/personnes"+(id?"/"+id:""),
+    {method:id?"PUT":"POST", body:JSON.stringify(v)}), id?"Acteur modifié":"Acteur ajouté");
+});
+byId("p_annule").addEventListener("click",resetPers);
+
+byId("r_submit").addEventListener("click",()=>{
+  const v = litRec();
+  if(!v.libelle || !v.date_debut || !v.date_fin){ alert("Libellé et fenêtre sont nécessaires."); return; }
+  if(v.date_fin < v.date_debut){ alert("La fin de fenêtre précède son début."); return; }
+  const id = byId("r_id").value;
+  envoyer(()=>api("/projets/"+PROJET_ID+"/recurrences"+(id?"/"+id:""),
+    {method:id?"PUT":"POST", body:JSON.stringify(v)}),
+    id?"Règle rejouée et séances synchronisées":"Règle créée et séances générées");
+});
+byId("r_annule").addEventListener("click",resetRec);
+
+byId("s_save").addEventListener("click",()=>{
+  const v = {code: byId("s_code").value.trim(), intitule: byId("s_intitule").value.trim(),
+    financeur: byId("s_financeur").value.trim(), date_debut: byId("s_debut").value,
+    date_fin: byId("s_fin").value, devise: byId("s_devise").value,
+    heures_jour: Number(byId("s_hj").value)||7, taux_defaut: Number(byId("s_taux").value)||0,
+    actif:true, artefacts_tableau: E.projet.artefacts_tableau};
+  envoyer(()=>api("/projets/"+PROJET_ID, {method:"PUT", body:JSON.stringify(v)}),
+    "Paramètres enregistrés");
+});
+
+byId("t_add").addEventListener("click",()=>{
+  const lib = byId("t_lib").value.trim(); if(!lib) return;
+  envoyer(()=>api("/projets/"+PROJET_ID+"/types", {method:"POST",
+    body:JSON.stringify({libelle:lib, couleur:byId("t_col").value})})
+    .then(()=>byId("t_lib").value=""), "Type ajouté");
+});
+byId("k_add").addEventListener("click",()=>{
+  const lib = byId("k_lib").value.trim(); if(!lib) return;
+  envoyer(()=>api("/projets/"+PROJET_ID+"/categories", {method:"POST",
+    body:JSON.stringify({libelle:lib, couleur:byId("k_col").value})})
+    .then(()=>byId("k_lib").value=""), "Catégorie ajoutée");
+});
+
+byId("art_tous").addEventListener("click",()=>{
+  ARTEFACTS.forEach(([c])=>{ const b=byId("art_"+c); if(b) b.checked = true; });
+});
+byId("art_save").addEventListener("click",()=>{
+  const choix = artefactsCoches();
+  if(!choix.length){ alert("Retenez au moins un artefact, sinon le tableau serait vide."); return; }
+  const p = E.projet;
+  envoyer(()=>api("/projets/"+PROJET_ID, {method:"PUT", body:JSON.stringify({
+    code:p.code, intitule:p.intitule, financeur:p.financeur, date_debut:p.date_debut,
+    date_fin:p.date_fin, devise:p.devise, heures_jour:p.heures_jour,
+    taux_defaut:p.taux_defaut, actif:true, artefacts_tableau:choix.join(",")})}),
+    choix.length+" artefact(s) retenus pour les tableaux de bord");
+});
+
+byId("tb_indiv").addEventListener("click",()=>{
+  const pid = byId("tb_personne").value;
+  if(!pid){ alert("Aucun acteur ne porte de ligne de temps."); return; }
+  window.open("/api/projets/"+PROJET_ID+"/export/tableau-de-bord.html?personne_id="+pid, "_blank");
+});
+byId("tb_conso").addEventListener("click",()=>{
+  window.open("/api/projets/"+PROJET_ID+"/export/tableau-de-bord.html", "_blank");
+});
+byId("tb_liasse").addEventListener("click",()=>{
+  window.location.href = "/api/projets/"+PROJET_ID+"/export/tableaux-de-bord.zip";
+});
+
+byId("fType").addEventListener("change",e=>{filtre.type=e.target.value;rendreTemps();});
+byId("fPers").addEventListener("change",e=>{filtre.pers=e.target.value;rendreTemps();});
+byId("fOrigine").addEventListener("change",e=>{filtre.origine=e.target.value;rendreTemps();});
+byId("fReset").addEventListener("click",()=>{filtre.type=filtre.pers=filtre.origine="";rendreTemps();});
+
+/* ---------- administration ---------- */
+byId("btnAdmin").addEventListener("click", ()=>{
+  if(byId("espaceAdmin").classList.contains("cache")) ouvrirAdmin();
+  else montrer("app");
+});
+
+async function ouvrirAdmin(message){
+  montrer("admin");
+  try{
+    ADMIN = await api("/admin/etat");
+    rendreAdmin();
+    etat(message || "Administration à jour", false, "etatAdmin");
+  }catch(e){ etat(e.message, true, "etatAdmin"); }
+}
+
+async function envoyerAdmin(fn, message){
+  try{ await fn(); await ouvrirAdmin(message); }
+  catch(e){ etat(e.message, true, "etatAdmin"); alert(e.message); }
+}
+
+function rendreAdmin(){
+  const devise = v => (v||0).toLocaleString("fr-FR",{maximumFractionDigits:2});
+  byId("tSyntheseProjets").innerHTML = tableau(
+    [{t:"Projet"},{t:"Code"},{t:"Financeur"},{t:"Période"},{t:"Acteurs",num:1},{t:"Comptes",num:1},
+     {t:"Lignes",num:1},{t:"Heures imputées",num:1},{t:"Jours-homme",num:1},{t:"Total",num:1},{t:""}],
+    ADMIN.projets.map(p=>{
+      const s = p.synthese;
+      return '<tr><td>'+esc(p.intitule)+'</td><td>'+esc(p.code)+'</td>'+
+        '<td class="muted">'+esc(p.financeur)+'</td>'+
+        '<td class="num muted">'+fmtD(p.date_debut)+'<br>'+fmtD(p.date_fin)+'</td>'+
+        '<td class="num">'+s.acteurs+'</td><td class="num">'+s.comptes+'</td>'+
+        '<td class="num">'+s.lignes+'</td><td class="num">'+fmtH(s.imputees)+'</td>'+
+        '<td class="num">'+devise(s.jours_homme)+'</td>'+
+        '<td class="num">'+devise(s.total)+'&nbsp;'+esc(p.devise)+'</td>'+
+        '<td class="num"><button class="mini" data-op="'+p.id+'">Ouvrir</button>'+
+        '<button class="mini rouge" data-xpr="'+p.id+'">Supprimer</button></td></tr>';
+    }),
+    '<tr><th colspan="6">Total</th>'+
+    '<th class="num">'+ADMIN.projets.reduce((s,p)=>s+p.synthese.lignes,0)+'</th>'+
+    '<th class="num">'+fmtH(ADMIN.projets.reduce((s,p)=>s+p.synthese.imputees,0))+'</th>'+
+    '<th class="num">'+devise(ADMIN.projets.reduce((s,p)=>s+p.synthese.jours_homme,0))+'</th>'+
+    '<th></th><th></th></tr>');
+
+  byId("ac_user").innerHTML = ADMIN.utilisateurs.map(u=>
+    '<option value="'+u.id+'">'+esc(u.nom||u.email)+'</option>').join("");
+  byId("ac_projet").innerHTML = ADMIN.projets.map(p=>
+    '<option value="'+p.id+'">'+esc(p.intitule)+'</option>').join("");
+  majPersonnesAcces();
+
+  byId("tComptes").innerHTML = tableau(
+    [{t:"Compte"},{t:"Rôle global"},{t:"Actif"},{t:"Dernière connexion"},{t:"Accès aux projets"},{t:""}],
+    ADMIN.utilisateurs.map(u=>{
+      const acces = u.acces.length
+        ? u.acces.map(a=>'<div style="margin-bottom:3px">'+esc(a.projet)+
+            ' <span class="etiq">'+esc(a.role)+'</span>'+
+            (a.personne?'<span class="etiq or">'+esc(a.personne)+'</span>':'')+
+            '<button class="mini rouge" data-xac="'+a.id+'">retirer</button></div>').join("")
+        : '<span class="muted">aucun</span>';
+      return '<tr><td>'+esc(u.email)+(u.nom?'<br><span class="muted" style="font-size:12px">'+esc(u.nom)+'</span>':'')+
+        (u.doit_changer?'<br><span class="etiq att">mot de passe provisoire</span>':'')+'</td>'+
+        '<td>'+(u.role_global==="admin"?'<span class="etiq ok">administrateur</span>':'utilisateur')+'</td>'+
+        '<td>'+(u.actif?'oui':'<span class="etiq att">non</span>')+'</td>'+
+        '<td class="muted">'+(u.derniere_connexion?esc(u.derniere_connexion.slice(0,10).split("-").reverse().join("/")):"jamais")+'</td>'+
+        '<td>'+acces+'</td>'+
+        '<td class="num"><button class="mini" data-bu="'+u.id+'">Basculer actif</button>'+
+        '<button class="mini" data-ru="'+u.id+'">Réinitialiser le mot de passe</button>'+
+        '<button class="mini rouge" data-xu="'+u.id+'">Supprimer</button></td></tr>';
+    }));
+}
+
+function majPersonnesAcces(){
+  const pid = +byId("ac_projet").value;
+  const projet = ADMIN.projets.find(p=>p.id===pid);
+  byId("ac_personne").innerHTML = '<option value="">Aucun rattachement</option>' +
+    ((projet ? projet.personnes : []).map(x=>
+      '<option value="'+x.id+'">'+esc(x.nom)+'</option>').join(""));
+}
+byId("ac_projet").addEventListener("change", majPersonnesAcces);
+
+byId("np_submit").addEventListener("click",()=>{
+  const v = {code: byId("np_code").value.trim().toUpperCase(),
+    intitule: byId("np_intitule").value.trim(), financeur: byId("np_financeur").value.trim(),
+    date_debut: byId("np_debut").value, date_fin: byId("np_fin").value,
+    devise: byId("np_devise").value, heures_jour: Number(byId("np_hj").value)||7,
+    taux_defaut: Number(byId("np_taux").value)||0, actif:true};
+  if(!v.code || !v.intitule || !v.date_debut || !v.date_fin){
+    alert("Code, intitulé et fenêtre de dates sont nécessaires."); return; }
+  envoyerAdmin(async ()=>{
+    await api("/admin/projets", {method:"POST", body:JSON.stringify(v)});
+    ["np_code","np_intitule","np_financeur"].forEach(i=>byId(i).value="");
+    const r = await api("/moi"); PROJETS = r.projets;
+    byId("selProjet").innerHTML = PROJETS.map(p=>
+      '<option value="'+p.id+'">'+esc(p.intitule)+'</option>').join("");
+  }, "Projet créé avec son référentiel par défaut");
+});
+
+byId("nu_submit").addEventListener("click",()=>{
+  const v = {email: byId("nu_email").value.trim(), nom: byId("nu_nom").value.trim(),
+    role_global: byId("nu_role").value, actif:true};
+  if(!v.email){ alert("L'adresse est nécessaire."); return; }
+  envoyerAdmin(async ()=>{
+    const r = await api("/admin/utilisateurs", {method:"POST", body:JSON.stringify(v)});
+    byId("nu_email").value=""; byId("nu_nom").value="";
+    encart("messageAdmin", "Compte créé pour <strong>"+esc(r.utilisateur.email)+
+      "</strong>. Mot de passe provisoire, affiché une seule fois : <code>"+
+      esc(r.mot_de_passe_provisoire)+"</code>");
+  }, "Compte créé");
+});
+
+byId("ac_submit").addEventListener("click",()=>{
+  const v = {utilisateur_id:+byId("ac_user").value, projet_id:+byId("ac_projet").value,
+    role: byId("ac_role").value,
+    personne_id: byId("ac_personne").value ? +byId("ac_personne").value : null};
+  envoyerAdmin(()=>api("/admin/acces", {method:"POST", body:JSON.stringify(v)}), "Accès accordé");
+});
+
+/* ---------- délégation des clics ---------- */
+document.addEventListener("click", e=>{
+  const d = e.target.dataset || {};
+
+  if(d.ea){ ecritAct(E.activites.find(a=>a.id===+d.ea));
+    byId("tTitre").textContent="Modifier la ligne";
+    byId("a_submit").textContent="Enregistrer les modifications";
+    byId("a_annule").style.display="inline-block"; window.scrollTo({top:0}); }
+  if(d.da){ const a = E.activites.find(x=>x.id===+d.da);
+    ecritAct(Object.assign({}, a, {id:""})); byId("a_id").value="";
+    byId("tTitre").textContent="Dupliquer la ligne, changez l'acteur puis enregistrez";
+    byId("a_submit").textContent="Ajouter la ligne dupliquée";
+    byId("a_annule").style.display="inline-block"; window.scrollTo({top:0}); }
+  if(d.va && confirm("Valider cette durée estimée ? Elle comptera comme durée retenue."))
+    envoyer(()=>api("/projets/"+PROJET_ID+"/activites/"+d.va+"/valider",{method:"POST"}),
+      "Durée validée");
+  if(d.na && confirm("Repasser cette ligne en durée estimée ?"))
+    envoyer(()=>api("/projets/"+PROJET_ID+"/activites/"+d.na+"/devalider",{method:"POST"}),
+      "Validation retirée");
+  if(d.xa && confirm("Supprimer cette ligne de temps ?"))
+    envoyer(()=>api("/projets/"+PROJET_ID+"/activites/"+d.xa,{method:"DELETE"}), "Ligne supprimée");
+
+  if(d.ed){ const x = E.depenses.find(y=>y.id===+d.ed);
+    byId("d_id").value=x.id; byId("d_date").value=x.date; byId("d_categorie").value=x.categorie_id;
+    byId("d_libelle").value=x.libelle; byId("d_personne").value=x.personne_id||"";
+    byId("d_qte").value=x.quantite; byId("d_unite").value=x.unite;
+    byId("d_cout").value=x.cout_unitaire; byId("d_statut").value=x.statut;
+    byId("d_ref").value=x.reference; byId("d_note").value=x.note;
+    byId("dTitre").textContent="Modifier la dépense";
+    byId("d_submit").textContent="Enregistrer les modifications";
+    byId("d_annule").style.display="inline-block"; window.scrollTo({top:0}); }
+  if(d.xd && confirm("Supprimer cette dépense ?"))
+    envoyer(()=>api("/projets/"+PROJET_ID+"/depenses/"+d.xd,{method:"DELETE"}), "Dépense supprimée");
+
+  if(d.ep){ const x = E.personnes.find(y=>y.id===+d.ep);
+    byId("p_id").value=x.id; byId("p_nom").value=x.nom; byId("p_org").value=x.organisation;
+    byId("p_role").value=x.role; byId("p_taux").value=x.taux_horaire;
+    byId("p_imput").value=x.imputable?"oui":"non"; byId("p_note").value=x.note;
+    byId("pTitre").textContent="Modifier l'acteur";
+    byId("p_submit").textContent="Enregistrer les modifications";
+    byId("p_annule").style.display="inline-block"; window.scrollTo({top:0}); }
+  if(d.xp && confirm("Supprimer cet acteur ?"))
+    envoyer(()=>api("/projets/"+PROJET_ID+"/personnes/"+d.xp,{method:"DELETE"}), "Acteur supprimé");
+
+  if(d.er){ const x = E.recurrences.find(y=>y.id===+d.er);
+    byId("r_id").value=x.id; byId("r_libelle").value=x.libelle;
+    byId("r_jour").value=x.jour_semaine; byId("r_rang").value=x.rang;
+    byId("r_debut").value=x.date_debut; byId("r_fin").value=x.date_fin;
+    byId("r_duree").value=x.duree_h; byId("r_part").value=x.part_imputable;
+    byId("r_statut").value=x.statut; byId("r_reporter").value=x.reporter?"oui":"non";
+    byId("r_note").value=x.note; byId("r_type").value=x.type_tache_id;
+    byId("r_personne").value=x.personne_id;
+    byId("rTitre").textContent="Modifier la règle";
+    byId("r_submit").textContent="Enregistrer et rejouer les séances";
+    byId("r_annule").style.display="inline-block"; window.scrollTo({top:0}); }
+  if(d.gr) envoyer(()=>api("/projets/"+PROJET_ID+"/recurrences/"+d.gr+"/generer",{method:"POST"}),
+    "Séances manquantes générées");
+  if(d.xr){
+    if(!confirm("Supprimer cette règle ?")) return;
+    const aussi = confirm("Supprimer aussi les séances déjà créées ? Annuler les conserve comme lignes ordinaires.");
+    envoyer(()=>api("/projets/"+PROJET_ID+"/recurrences/"+d.xr+"?supprimer_occurrences="+
+      (aussi?"true":"false"),{method:"DELETE"}), "Règle supprimée");
+  }
+
+  if(d.xt) envoyer(()=>api("/projets/"+PROJET_ID+"/types/"+d.xt,{method:"DELETE"}), "Type supprimé");
+  if(d.xk) envoyer(()=>api("/projets/"+PROJET_ID+"/categories/"+d.xk,{method:"DELETE"}), "Catégorie supprimée");
+
+  /* administration */
+  if(d.op){ PROJET_ID = +d.op; byId("selProjet").value = d.op; montrer("app"); charger(); }
+  if(d.xpr && confirm("Supprimer ce projet et tout son contenu ? Action irréversible."))
+    envoyerAdmin(async ()=>{
+      await api("/admin/projets/"+d.xpr, {method:"DELETE"});
+      const r = await api("/moi"); PROJETS = r.projets;
+      byId("selProjet").innerHTML = PROJETS.map(p=>
+        '<option value="'+p.id+'">'+esc(p.intitule)+'</option>').join("");
+      if(PROJETS.length){ PROJET_ID = PROJETS[0].id; byId("selProjet").value = PROJET_ID; }
+    }, "Projet supprimé");
+  if(d.bu){ const u = ADMIN.utilisateurs.find(x=>x.id===+d.bu);
+    envoyerAdmin(()=>api("/admin/utilisateurs/"+u.id, {method:"PUT", body:JSON.stringify(
+      {email:u.email, nom:u.nom, role_global:u.role_global, actif:!u.actif})}),
+      "Compte mis à jour"); }
+  if(d.ru && confirm("Générer un nouveau mot de passe provisoire ?"))
+    envoyerAdmin(async ()=>{
+      const r = await api("/admin/utilisateurs/"+d.ru+"/mot-de-passe", {method:"POST"});
+      encart("messageAdmin", "Nouveau mot de passe provisoire, affiché une seule fois : <code>"+
+        esc(r.mot_de_passe_provisoire)+"</code>");
+    }, "Mot de passe réinitialisé");
+  if(d.xu && confirm("Supprimer ce compte ?"))
+    envoyerAdmin(()=>api("/admin/utilisateurs/"+d.xu, {method:"DELETE"}), "Compte supprimé");
+  if(d.xac && confirm("Retirer cet accès ?"))
+    envoyerAdmin(()=>api("/admin/acces/"+d.xac, {method:"DELETE"}), "Accès retiré");
+});
+
+document.addEventListener("change", e=>{
+  const d = e.target.dataset || {};
+  if(d.tl || d.tc){
+    const id = +(d.tl||d.tc), t = E.types.find(x=>x.id===id);
+    envoyer(()=>api("/projets/"+PROJET_ID+"/types/"+id, {method:"PUT", body:JSON.stringify(
+      {libelle: d.tl?e.target.value:t.libelle, couleur: d.tc?e.target.value:t.couleur})}),
+      "Type mis à jour");
+  }
+  if(d.kl || d.kc){
+    const id = +(d.kl||d.kc), c = E.categories.find(x=>x.id===id);
+    envoyer(()=>api("/projets/"+PROJET_ID+"/categories/"+id, {method:"PUT", body:JSON.stringify(
+      {libelle: d.kl?e.target.value:c.libelle, couleur: d.kc?e.target.value:c.couleur})}),
+      "Catégorie mise à jour");
+  }
+});
+
+/* ---------- ouverture ---------- */
+(async function(){
+  try{
+    const r = await api("/moi");
+    MOI = r.utilisateur;
+    if(MOI.doit_changer){ byId("champAncien").style.display="none"; montrer("motdepasse"); return; }
+    await demarrer();
+  }catch(e){ montrer("connexion"); }
+})();
+</script>
+</body>
+</html>
