@@ -67,7 +67,14 @@ l'effort d'un seul acteur. Le consolidé expose tous les acteurs et sert de piè
 financeur. La liasse rassemble en une archive le consolidé et un tableau par acteur ayant
 déclaré du temps.
 
-Ces fichiers sont des HTML autonomes : aucune feuille de style distante, aucun script, aucun
+Chaque sortie existe en PDF et en HTML. Le PDF est composé directement par reportlab à
+partir des mêmes données et des mêmes règles que la version écran, y compris le masquage des
+montants pour un contributeur et la sélection des blocs : ce n'est pas une conversion du HTML,
+donc aucun moteur de rendu ni bibliothèque système n'est requis. Si reportlab venait à manquer
+sur un déploiement, l'application démarre quand même et seule la route PDF répond par un
+message explicite.
+
+Les fichiers HTML sont autonomes : aucune feuille de style distante, aucun script, aucun
 appel réseau, graphiques en SVG inline. Ils s'ouvrent hors ligne et s'impriment en PDF depuis
 le navigateur. Chacun porte un anneau de répartition de l'effort, un histogramme mensuel
 empilé par type de tâche, et pour le consolidé un plan de charge comparant les acteurs. Les
@@ -88,7 +95,7 @@ information : chaque pastille est légendée, chaque graphique doublé d'un tabl
 Le démarrage écrit un bandeau dans les journaux :
 
 ```
-Suivi des temps et dépenses, version 2.3.1, révision tableau-doublons-r6
+Suivi des temps et dépenses, version 2.5.0, révision export-pdf-r8
 ```
 
 Si ce bandeau n'apparaît pas, le service exécute encore une version antérieure et le
@@ -171,6 +178,20 @@ Avant chaque déploiement, `./verifier.sh` enchaîne la compilation, la recherch
 définitions et de routes en double, la cohérence entre le modèle, l'API et l'interface, puis
 l'équilibrage du JavaScript et la présence des identifiants du DOM. Ces contrôles tournent
 sans base de données ni dépendance installée.
+
+## Taux horaires
+
+Le taux se saisit à deux niveaux. Dans l'onglet des personnes, le champ « taux horaire chargé »
+vaut pour un acteur et lui seul. Dans l'onglet des réglages, le « taux horaire par défaut »
+s'applique à tout acteur dont le taux propre est resté à zéro, ce qui évite de ressaisir le
+même montant pour chaque membre d'un consortium. Seuls l'administration et le gestionnaire du
+projet modifient ces valeurs.
+
+Le coût est recalculé à chaque affichage à partir des heures imputées et du taux applicable :
+changer un taux met à jour l'ensemble de l'historique du projet, il n'y a rien à recalculer
+ni à ressaisir. Un taux n'est donc pas historisé. Si un taux change en cours de projet et que
+la distinction compte pour le financeur, créez deux acteurs distincts plutôt que de modifier
+le taux en place.
 
 ## Recouvrements
 

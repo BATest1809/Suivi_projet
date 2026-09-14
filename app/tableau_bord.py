@@ -330,12 +330,23 @@ def _colonnes_etat(colonnes) -> str:
 # composition
 # --------------------------------------------------------------------------
 
-def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=False):
+def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=False,
+               artefacts=None):
     """Assemble le tableau de bord.
 
     personne None produit la version consolidée destinée au financeur.
     confidentiel_couts masque les montants, cas d'un contributeur.
+    artefacts restreint le document aux blocs demandés ; None les retient tous.
+    Les codes possibles sont ceux de models.ARTEFACTS.
     """
+    retenus = None
+    if artefacts is not None:
+        retenus = {a.strip() for a in (artefacts.split(",") if isinstance(artefacts, str)
+                                       else artefacts) if a and a.strip()}
+
+    def veut(code):
+        return retenus is None or code in retenus
+
     devise = projet.devise
     hj = projet.heures_jour or 7.0
     activites = donnees["activites"]
@@ -410,17 +421,17 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
         blocs.append((_m(total_dep, devise), "dépenses techniques"))
     blocs.append(((_n(h_source / total_hi * 100, 0) + " %") if total_hi else "0 %",
                   "des heures mesurées à la source, hors validation"))
-    bandeau = "".join(f'<div class="bloc"><div class="v">{v}</div><div class="l">{l}</div></div>'
-                      for v, l in blocs)
+    bandeau = ("".join(f'<div class="bloc"><div class="v">{v}</div><div class="l">{l}</div></div>'
+                       for v, l in blocs) if veut("indicateurs") else "")
 
     sections = []
 
     # ---------- frise et total ----------
-    if activites:
+    if activites and (veut("chronologie") or veut("total")):
         lignes_frise = [(noms_pers.get(pid, {}).get("nom", ""), d0, d1, par_personne[pid]["hi"])
                         for pid, (d0, d1) in sorted(bornes.items(), key=lambda kv: kv[1][0])]
         dates = [a.date for a in activites]
-        frise = _frise(lignes_frise, min(dates), max(dates))
+        frise = _frise(lignes_frise, min(dates), max(dates)) if veut("chronologie") else ""
         if confidentiel_couts:
             encadre = (f'<section><h3>Effort déclaré</h3>'
                        f'<div class="grand">{_n(total_hi / hj)}</div>'
@@ -433,11 +444,15 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
                        f"{_m(total_cout, devise)} de main d'œuvre et {_m(total_dep, devise)} de "
                        f'dépenses techniques, dont {_m(total_dep_j, devise)} justifiées par une '
                        f'pièce.</div></section>')
-        if frise:
+        if not veut("total"):
+            encadre = ""
+        if frise and encadre:
             sections.append(f'<div class="duo-haut">'
                             f"<section><h2>Période d'activité par acteur</h2>{frise}</section>"
                             f'{encadre}</div>')
-        else:
+        elif frise:
+            sections.append(f"<section><h2>Période d'activité par acteur</h2>{frise}</section>")
+        elif encadre:
             sections.append(encadre)
 
     # ---------- colonnes d'état ----------
@@ -457,7 +472,8 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
         ("À arbitrer", "#E2445C", "#FCE9EC",
          [fiche(a) for a in sorted(arbitrer, key=lambda x: x.date)], len(arbitrer)),
     ]
-    sections.append(
+    if veut("statuts"):
+        sections.append(
         "<section><h2>État des lignes de temps</h2>"
         "<p>Une durée mesurée à la source et une durée retenue après validation comptent toutes "
         "deux dans le récapitulatif, mais ne se valent pas : la seconde reste un arbitrage, et "
@@ -479,11 +495,15 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
                  for t in types if t.id in par_mois_type]
     histogramme = _barres_empilees(mois, sequences) or \
         '<p style="margin:0">Aucune donnée mensuelle sur ce périmètre.</p>'
-    sections.append(
-        f'<div class="duo"><section><h2>Répartition de l\'effort</h2>'
-        f'{_camembert(parts, _n(total_hi / hj, 1), "jours-homme")}'
-        f'<div class="legende">{legende}</div></section>'
-        f'<section><h2>Charge mensuelle par type de tâche</h2>{histogramme}</section></div>')
+    bloc_anneau = (f'<section><h2>Répartition de l\'effort</h2>'
+                   f'{_camembert(parts, _n(total_hi / hj, 1), "jours-homme")}'
+                   f'<div class="legende">{legende}</div></section>') if veut("anneau") else ""
+    bloc_barres = (f'<section><h2>Charge mensuelle par type de tâche</h2>'
+                   f'{histogramme}</section>') if veut("barres") else ""
+    if bloc_anneau and bloc_barres:
+        sections.append(f'<div class="duo">{bloc_anneau}{bloc_barres}</div>')
+    elif bloc_anneau or bloc_barres:
+        sections.append(bloc_anneau or bloc_barres)
 
     # ---------- tableau par type ----------
     entetes_type = [("Type de tâche", False), ("Lignes", True), ("Heures", True),
@@ -499,11 +519,12 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
                  f'<th class="num">{_h(total_h)}</th><th class="num">{_h(total_hi)}</th>'
                  + ("" if confidentiel_couts else f'<th class="num">{_m(total_cout, devise)}</th>')
                  + "</tr>")
-    sections.append("<section><h2>Détail par type de tâche</h2>"
-                    f"{_table(entetes_type, lignes_type, pied_type)}</section>")
+    if veut("types"):
+        sections.append("<section><h2>Détail par type de tâche</h2>"
+                        f"{_table(entetes_type, lignes_type, pied_type)}</section>")
 
     # ---------- acteurs ----------
-    if not personne:
+    if not personne and veut("acteurs"):
         classement = sorted(par_personne.items(), key=lambda kv: -kv[1]["hi"])
         maxi = classement[0][1]["hi"] if classement else 0
         rubans = _rubans([(noms_pers.get(pid, {}).get("nom", ""), v["hi"])
@@ -534,7 +555,7 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
                         f"</div></section>")
 
     # ---------- dépenses ----------
-    if depenses and not confidentiel_couts:
+    if depenses and not confidentiel_couts and veut("depenses"):
         libelle_cat = {c.id: c.libelle for c in categories}
         couleur_cat = {c.id: c.couleur or PALETTE_DEFAUT for c in categories}
         lignes_c = [
@@ -592,18 +613,19 @@ def construire(projet, donnees, personne=None, alertes=None, confidentiel_couts=
                 ([] if personne else [("Acteur", False)]) + \
                 [("Durée", True), ("Part", True), ("Imputé", True)] + \
                 ([] if confidentiel_couts else [("Coût", True)])
-    sections.append("<section><h2>Détail des lignes de temps</h2>"
-                    f"{_table(entetes_d, lignes_d)}</section>")
+    if veut("detail"):
+        sections.append("<section><h2>Détail des lignes de temps</h2>"
+                        f"{_table(entetes_d, lignes_d)}</section>")
 
     # ---------- réserves ----------
-    if alertes:
+    if alertes and veut("reserves"):
         items = "".join(f'<div class="avert">{_e(a["texte"])}</div>' for a in alertes)
         sections.append(
             "<section><h2>Points à arbitrer</h2>"
             "<p>Ces réserves accompagnent le récapitulatif plutôt qu'elles ne le contredisent : "
             "les signaler est la condition pour que le reste soit tenu pour fiable.</p>"
             f"{items}</section>")
-    elif not personne:
+    elif not personne and veut("reserves"):
         sections.append('<section><h2>Points à arbitrer</h2>'
                         '<div class="avert sereine">Aucune zone grise détectée sur ce périmètre.'
                         "</div></section>")

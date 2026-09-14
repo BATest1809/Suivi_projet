@@ -501,10 +501,14 @@ ul.avis li.serein{background:var(--vert-voile);border-left-color:var(--vert)}
       </div>
       <div class="carte">
         <h2>Tableaux de bord</h2>
-        <p class="sub">Fichiers HTML autonomes, sans dépendance ni appel réseau, imprimables en PDF depuis le navigateur. La liasse rassemble un tableau par acteur et le consolidé destiné au financeur.</p>
+        <p class="sub">Le PDF est mis en page directement, prêt à joindre à un dossier. La version HTML est un fichier autonome, sans dépendance ni appel réseau, qui s'ouvre hors ligne et s'imprime depuis le navigateur. La liasse rassemble, dans le format choisi, un tableau par acteur et le consolidé destiné au financeur.</p>
         <form class="grille" onsubmit="return false">
-          <div class="f c5"><label for="tb_personne">Tableau individuel</label><select id="tb_personne"></select></div>
-          <div class="c7 actions" style="margin-top:0">
+          <div class="f c4"><label for="tb_personne">Tableau individuel</label><select id="tb_personne"></select></div>
+          <div class="f c3"><label for="tb_format">Format</label><select id="tb_format">
+            <option value="pdf">PDF</option>
+            <option value="html">HTML, imprimable</option>
+          </select></div>
+          <div class="c5 actions" style="margin-top:0">
             <button class="pleine" id="tb_indiv" type="button">Ouvrir le tableau individuel</button>
             <button class="vide" id="tb_conso" type="button">Ouvrir le consolidé</button>
             <button class="vide" id="tb_liasse" type="button">Télécharger la liasse complète</button>
@@ -1446,16 +1450,23 @@ byId("art_save").addEventListener("click",()=>{
     choix.length+" artefact(s) retenus pour les tableaux de bord");
 });
 
+function formatTableau(){ return byId("tb_format").value || "pdf"; }
+function urlTableau(personneId){
+  const f = formatTableau();
+  return "/api/projets/"+PROJET_ID+"/export/tableau-de-bord."+f+
+    (personneId ? "?personne_id="+personneId : "");
+}
 byId("tb_indiv").addEventListener("click",()=>{
   const pid = byId("tb_personne").value;
   if(!pid){ alert("Aucun acteur ne porte de ligne de temps."); return; }
-  window.open("/api/projets/"+PROJET_ID+"/export/tableau-de-bord.html?personne_id="+pid, "_blank");
+  window.open(urlTableau(pid), "_blank");
 });
 byId("tb_conso").addEventListener("click",()=>{
-  window.open("/api/projets/"+PROJET_ID+"/export/tableau-de-bord.html", "_blank");
+  window.open(urlTableau(null), "_blank");
 });
 byId("tb_liasse").addEventListener("click",()=>{
-  window.location.href = "/api/projets/"+PROJET_ID+"/export/tableaux-de-bord.zip";
+  window.location.href = "/api/projets/"+PROJET_ID+
+    "/export/tableaux-de-bord.zip?format="+formatTableau();
 });
 
 byId("fType").addEventListener("change",e=>{filtre.type=e.target.value;rendreTemps();});

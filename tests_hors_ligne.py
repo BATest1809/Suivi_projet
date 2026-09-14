@@ -227,6 +227,37 @@ def principal():
         assert groupe["ids"][0] == 6, "la ligne la plus longue doit venir en tête"
     verifier("regroupement des recouvrements", doublons)
 
+    def repli_du_taux():
+        """Reproduit la règle du modèle : taux de la personne, à défaut celui du projet."""
+        source = (RACINE / "app/models.py").read_text()
+        bloc = source[source.index("def taux_horaire_applique"):source.index("def cout")]
+        assert "projet.taux_defaut" in bloc, \
+            "le taux du projet doit servir de repli au calcul du coût"
+        corps = source[source.index("def cout"):]
+        corps = corps[:corps.index("class ") if "class " in corps else len(corps)]
+        assert "taux_horaire_applique" in corps, \
+            "le coût doit passer par le taux appliqué, pas directement par celui de la personne"
+        principal = (RACINE / "app/main.py").read_text()
+        assert "a.personne.taux_horaire or p.projet.taux_defaut" not in principal, \
+            "l'export ne doit plus recalculer le repli de son côté"
+    verifier("le taux du projet sert bien de repli", repli_du_taux)
+
+    def signatures_des_tableaux():
+        """Les deux générateurs doivent accepter les six mêmes arguments."""
+        import inspect as insp
+        for fichier, fonction in (("app/tableau_bord.py", "construire"),
+                                  ("app/tableau_pdf.py", "construire_pdf")):
+            source = (RACINE / fichier).read_text()
+            ligne = source[source.index(f"def {fonction}("):]
+            ligne = ligne[:ligne.index(")")]
+            for attendu in ("projet", "donnees", "personne", "alertes",
+                            "confidentiel_couts", "artefacts"):
+                assert attendu in ligne, f"{fonction} n'accepte pas {attendu}"
+        principal = (RACINE / "app/main.py").read_text()
+        for appel in ("tableau_bord.construire(", "tableau_pdf.construire_pdf("):
+            assert appel in principal, f"{appel} n'est jamais utilisé"
+    verifier("construire accepte la sélection d'artefacts", signatures_des_tableaux)
+
     def sans_faux_positif():
         isolees = [a for a in activites if a.id in (1, 3)]
         assert espace["groupes_doublons"](isolees) == [], \

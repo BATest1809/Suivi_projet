@@ -21,10 +21,17 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session, joinedload
 
 from . import models, schemas, securite, seed_data, tableau_bord
+
+try:
+    from . import tableau_pdf
+except Exception as _erreur_pdf:  # pragma: no cover
+    tableau_pdf = None
+    print(f"Export PDF indisponible : {_erreur_pdf}. "
+          "Installez reportlab pour l'activer ; le reste de l'application fonctionne.")
 from .database import Base, SessionLocal, engine, get_db
 
-VERSION = "2.3.1"
-REVISION = "tableau-doublons-r6"
+VERSION = "2.5.0"
+REVISION = "export-pdf-r8"
 
 app = FastAPI(title="Suivi des temps et dépenses", version=VERSION)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -1088,7 +1095,7 @@ def export_temps(projet_id: int, p: securite.Portee = Depends(scope),
                "Coût", "Source", "Statut durée", "Origine estimée", "Validée le", "Validée par",
                "Objet mixte", "Récurrente", "Date théorique", "Reportée", "Note"]]
     for a in sorted(activites_visibles(p, db), key=lambda x: x.date):
-        taux = a.personne.taux_horaire or p.projet.taux_defaut or 0
+        taux = a.taux_horaire_applique
         lignes.append([
             a.date.strftime("%d/%m/%Y"), a.heure_debut or "", a.heure_fin or "", a.libelle,
             types.get(a.type_tache_id, ""), a.personne.nom, a.personne.organisation or "",
@@ -1171,7 +1178,8 @@ def _donnees_tableau(p: securite.Portee, db: Session, personne_id=None):
                    .order_by(models.TypeTache.ordre).all(),
         "categories": db.query(models.CategorieDepense).filter_by(projet_id=p.projet.id).all(),
         "noms_personnes": {x.id: {"nom": x.nom, "organisation": x.organisation or "",
-                                  "taux": x.taux_horaire, "imputable": x.imputable}
+                                  "taux": x.taux_horaire or p.projet.taux_defaut or 0,
+                                  "imputable": x.imputable}
                            for x in personnes},
         "personnes": personnes,
     }
@@ -1191,6 +1199,20 @@ def liste_artefacts(projet_id: int, p: securite.Portee = Depends(scope)):
             "retenus": _artefacts(p.projet)}
 
 
+def _nom_fichier(projet, personne=None) -> str:
+    nom = f"{projet.code}-tableau-de-bord"
+    if personne:
+        nom += "-" + personne.nom.lower().replace(" ", "-").replace("/", "-")
+    return nom
+
+
+def _exiger_pdf():
+    if tableau_pdf is None:
+        raise HTTPException(503, "L'export PDF n'est pas disponible sur ce déploiement : "
+                                 "la dépendance reportlab est absente. Les exports HTML et CSV "
+                                 "restent utilisables.")
+
+
 @app.get("/api/projets/{projet_id}/export/tableau-de-bord.html")
 def export_tableau(projet_id: int, personne_id: int = Query(default=None),
                    artefacts: str = Query(default=None),
@@ -1205,25 +1227,63 @@ def export_tableau(projet_id: int, personne_id: int = Query(default=None),
                         p.projet, p.restreint)
     html = tableau_bord.construire(p.projet, donnees, personne, alertes, p.restreint,
                                    _artefacts(p.projet, artefacts))
-    nom = f"{p.projet.code}-tableau-de-bord"
-    if personne:
-        nom += "-" + personne.nom.lower().replace(" ", "-")
+    nom = _nom_fichier(p.projet, personne)
     return HTMLResponse(html, headers={"Content-Disposition": f'attachment; filename="{nom}.html"'})
+
+
+@app.get("/api/projets/{projet_id}/export/tableau-de-bord.pdf")
+def export_tableau_pdf(projet_id: int, personne_id: int = Query(default=None),
+                       artefacts: str = Query(default=None),
+                       p: securite.Portee = Depends(scope), db: Session = Depends(get_db)):
+    """Même tableau de bord, composé directement en PDF.
+
+    Le PDF n'est pas une conversion du HTML : il est mis en page par reportlab à
+    partir des mêmes données, avec les mêmes règles de masquage et de sélection.
+    """
+    _exiger_pdf()
+    if p.restreint:
+        personne_id = p.personne_id
+    personne = None
+    if personne_id:
+        personne = verifier_projet(p, db.get(models.Personne, personne_id), "Cette personne")
+    donnees = _donnees_tableau(p, db, personne_id)
+    alertes = controles(donnees["activites"], donnees["depenses"], donnees["personnes"],
+                        p.projet, p.restreint)
+    octets = tableau_pdf.construire_pdf(p.projet, donnees, personne, alertes, p.restreint,
+                                        _artefacts(p.projet, artefacts))
+    nom = _nom_fichier(p.projet, personne)
+    return Response(octets, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{nom}.pdf"'})
 
 
 @app.get("/api/projets/{projet_id}/export/tableaux-de-bord.zip")
 def export_liasse(projet_id: int, artefacts: str = Query(default=None),
+                  format: str = Query(default="html"),
                   p: securite.Portee = Depends(scope), db: Session = Depends(get_db)):
-    """Liasse destinée au financeur : un tableau par acteur, plus le consolidé."""
+    """Liasse destinée au financeur : un tableau par acteur, plus le consolidé.
+
+    format vaut html, pdf, ou les deux pour une archive qui porte les deux versions.
+    """
     p.exiger_pilotage()
+    formats = {f.strip() for f in format.split(",") if f.strip()} or {"html"}
+    if formats - {"html", "pdf"}:
+        raise HTTPException(422, "Format inconnu : html, pdf, ou html,pdf.")
+    if "pdf" in formats:
+        _exiger_pdf()
     retenus = _artefacts(p.projet, artefacts)
     tampon = io.BytesIO()
     with zipfile.ZipFile(tampon, "w", zipfile.ZIP_DEFLATED) as archive:
         donnees = _donnees_tableau(p, db)
         alertes = controles(donnees["activites"], donnees["depenses"], donnees["personnes"],
                             p.projet, False)
-        archive.writestr(f"{p.projet.code}-consolide.html",
-                         tableau_bord.construire(p.projet, donnees, None, alertes, False, retenus))
+        if "html" in formats:
+            archive.writestr(f"{p.projet.code}-consolide.html",
+                             tableau_bord.construire(p.projet, donnees, None, alertes,
+                                                     False, retenus))
+        if "pdf" in formats:
+            archive.writestr(f"{p.projet.code}-consolide.pdf",
+                             tableau_pdf.construire_pdf(p.projet, donnees, None, alertes,
+                                                        False, retenus))
         actifs = {a.personne_id for a in donnees["activites"]}
         for personne in donnees["personnes"]:
             if personne.id not in actifs:
@@ -1231,8 +1291,14 @@ def export_liasse(projet_id: int, artefacts: str = Query(default=None),
             d = _donnees_tableau(p, db, personne.id)
             al = controles(d["activites"], d["depenses"], d["personnes"], p.projet, False)
             nom = personne.nom.lower().replace(" ", "-").replace("/", "-")
-            archive.writestr(f"individuels/{nom}.html",
-                             tableau_bord.construire(p.projet, d, personne, al, False, retenus))
+            if "html" in formats:
+                archive.writestr(f"individuels/{nom}.html",
+                                 tableau_bord.construire(p.projet, d, personne, al,
+                                                         False, retenus))
+            if "pdf" in formats:
+                archive.writestr(f"individuels/{nom}.pdf",
+                                 tableau_pdf.construire_pdf(p.projet, d, personne, al,
+                                                            False, retenus))
     tampon.seek(0)
     return Response(tampon.read(), media_type="application/zip",
                     headers={"Content-Disposition":

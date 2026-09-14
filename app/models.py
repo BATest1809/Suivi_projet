@@ -237,10 +237,25 @@ class Activite(Base):
         return self.heures * (float(self.part_imputable or 0) / 100.0)
 
     @property
+    def taux_horaire_applique(self) -> float:
+        """Taux retenu : celui de la personne, à défaut celui du projet.
+
+        Le repli sur le taux du projet évite qu'un coût soit calculé à zéro alors
+        que les exports et les contrôles annoncent, eux, le taux par défaut.
+        """
+        if not self.personne:
+            return 0.0
+        taux = float(self.personne.taux_horaire or 0)
+        if taux > 0:
+            return taux
+        projet = self.personne.projet
+        return float(projet.taux_defaut or 0) if projet else 0.0
+
+    @property
     def cout(self) -> float:
         if not self.personne or not self.personne.imputable:
             return 0.0
-        return self.heures_imputees * float(self.personne.taux_horaire or 0)
+        return self.heures_imputees * self.taux_horaire_applique
 
 
 ARTEFACTS = [
