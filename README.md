@@ -88,7 +88,7 @@ information : chaque pastille est légendée, chaque graphique doublé d'un tabl
 Le démarrage écrit un bandeau dans les journaux :
 
 ```
-Suivi des temps et dépenses, version 2.3.0, révision tableau-doublons-r5
+Suivi des temps et dépenses, version 2.3.1, révision tableau-doublons-r6
 ```
 
 Si ce bandeau n'apparaît pas, le service exécute encore une version antérieure et le
@@ -112,6 +112,60 @@ Schéma vérifié : toutes les colonnes attendues sont présentes.
 
 Si un écart subsiste, il est nommé explicitement et `migration_manuelle.sql` s'exécute tel
 quel dans la console Postgres de Railway pour le combler.
+
+### Contrôles avant déploiement
+
+== compilation ==
+== doublons de définitions ==
+  aucun
+== routes en double ==
+  aucune
+== migration deduite du modele, pas d une liste a la main ==
+  ok
+== cohérence modèle, API et interface ==
+ok     sérialisation d'un projet
+ok     sérialisation d'un type
+ok     sérialisation d'une personne
+ok     sérialisation des lignes de temps
+ok     sérialisation des dépenses
+ok     sérialisation d'une récurrence
+ok     contrôles de cohérence
+ok     la validation reste distinguée de la mesure
+ok     regroupement des recouvrements
+ok     pas de faux positif sur les recouvrements
+
+Tous les contrôles passent.
+== interface : execution des fonctions de rendu ==
+  ok     remplirSelects
+  ok     rendreEntete
+  ok     rendreRecap
+  ok     rendreTemps
+  ok     rendreDoublons
+  ok     rendreBandeauValidation
+  ok     rendreRec
+  ok     rendreDep
+  ok     rendrePers
+  ok     rendreReglages
+  ok     rendre (enchaînement complet)
+  ok     resetAct
+  ok     resetDep
+  ok     resetPers
+  ok     resetRec
+  ok     rendreAdmin
+  ok     litAct
+  ok     litDep
+  ok     litRec
+  ok     la table contient les lignes et signale le recouvrement
+  ok     le panneau d'arbitrage propose de retenir une ligne
+  
+  Toutes les fonctions de rendu s'exécutent.
+== interface : identifiants et équilibrage ==
+  ok
+
+Tous les contrôles passent. enchaîne la compilation, la recherche de définitions et de routes en double,
+la cohérence entre le modèle, l'API et l'interface, l'exécution de toutes les fonctions de
+rendu de la page dans un DOM factice sous Node, puis l'équilibrage du JavaScript et la
+présence des identifiants du DOM. Aucune base ni dépendance installée n'est requise.
 
 Avant chaque déploiement, `./verifier.sh` enchaîne la compilation, la recherche de
 définitions et de routes en double, la cohérence entre le modèle, l'API et l'interface, puis

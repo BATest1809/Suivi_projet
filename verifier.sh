@@ -56,6 +56,13 @@ PY
 
 echo "== cohérence modèle, API et interface =="
 python3 tests_hors_ligne.py
+echo "== interface : execution des fonctions de rendu =="
+if command -v node >/dev/null 2>&1; then
+  node tests_interface.js | sed "s/^/  /"
+else
+  echo "  node absent, controle saute"
+fi
+
 echo "== interface : identifiants et équilibrage =="
 python3 - <<'PY'
 import pathlib, re

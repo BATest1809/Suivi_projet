@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session, joinedload
 from . import models, schemas, securite, seed_data, tableau_bord
 from .database import Base, SessionLocal, engine, get_db
 
-VERSION = "2.3.0"
-REVISION = "tableau-doublons-r5"
+VERSION = "2.3.1"
+REVISION = "tableau-doublons-r6"
 
 app = FastAPI(title="Suivi des temps et dépenses", version=VERSION)
 STATIC_DIR = Path(__file__).parent / "static"

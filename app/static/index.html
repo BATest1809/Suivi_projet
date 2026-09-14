@@ -1079,6 +1079,41 @@ function rendreDoublons(){
     'conserve la trace de la réunion tout en la retirant du total.</p>'+bloc+'</div>';
 }
 
+/* Validation en masse : porte sur les lignes actuellement affichées, pour que la
+   sélection soit celle que l'écran montre et non une sélection invisible. */
+function rendreBandeauValidation(lignes){
+  const cible = byId("bandeauValidation");
+  if(!E.droits.pilote){ cible.innerHTML = ""; return; }
+  const attente = lignes.filter(a=>a.statut==="estime" && a.heures>0);
+  const sansDuree = lignes.filter(a=>a.statut==="estime" && a.heures<=0);
+  if(!attente.length && !sansDuree.length){ cible.innerHTML = ""; return; }
+  const heures = attente.reduce((s,a)=>s+a.heures_imputees,0);
+  let texte = "";
+  if(attente.length)
+    texte += '<strong>'+attente.length+' durée(s) estimée(s)</strong> parmi les lignes affichées, '+
+      'soit '+fmtH(heures)+'. Les valider les fera compter comme durées retenues, avec votre '+
+      'nom et la date en trace.';
+  if(sansDuree.length)
+    texte += (texte?'<br>':'')+sansDuree.length+' ligne(s) sans durée seront écartées : '+
+      'renseignez la durée avant de les valider.';
+  cible.innerHTML = '<div class="encart" style="background:var(--jaune-voile);'+
+    'border-left-color:var(--jaune)">'+texte+
+    (attente.length?'<div class="actions" style="margin-top:11px">'+
+      '<button class="pleine" id="valMasse" style="background:var(--vert)">Valider les '+
+      attente.length+' estimation(s) affichée(s)</button></div>':'')+'</div>';
+  const bouton = byId("valMasse");
+  if(bouton) bouton.addEventListener("click", ()=>{
+    if(!confirm("Valider "+attente.length+" ligne(s) ? Leur durée estimée deviendra une "+
+      "durée retenue.")) return;
+    envoyer(async ()=>{
+      const r = await api("/projets/"+PROJET_ID+"/activites/valider", {method:"POST",
+        body:JSON.stringify({ids: attente.map(a=>a.id)})});
+      if(r.ecartees && r.ecartees.length)
+        alert(r.validees+" ligne(s) validée(s). Écartées faute de durée : "+r.ecartees.join(" ; "));
+    }, "Estimations validées");
+  });
+}
+
 function litAct(){
   return {date: byId("a_date").value, heure_debut: byId("a_debut").value, heure_fin: byId("a_fin").value,
     duree_h: byId("a_duree").value==="" ? null : Number(byId("a_duree").value),
