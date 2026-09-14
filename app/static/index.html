@@ -157,9 +157,44 @@ ul.avis li.serein{background:var(--vert-voile);border-left-color:var(--vert)}
 .encart code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
   background:var(--carte);padding:3px 8px;border-radius:var(--r-s);border:1px solid var(--bordure-forte)}
 
+
+/* Table du temps : aucune colonne hors champ, en-tête et actions toujours visibles. */
+.table-temps{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;table-layout:fixed}
+.table-temps th{position:sticky;top:56px;z-index:3;background:var(--carte);
+  box-shadow:inset 0 -1px 0 var(--bordure)}
+.table-temps td{border-bottom:1px solid var(--bordure);padding:10px;vertical-align:top}
+.table-temps .col-outils{position:sticky;right:0;z-index:2;background:var(--carte);
+  box-shadow:-8px 0 10px -8px rgba(50,53,56,.28);width:132px;text-align:right}
+.table-temps tbody tr:hover td{background:var(--fond)}
+.table-temps tbody tr:hover .col-outils{background:var(--fond)}
+.table-temps th.col-outils{z-index:4}
+.table-temps .titre-ligne{font-weight:600;line-height:1.35}
+.table-temps .secondaire{font-size:12px;color:var(--gris);margin-top:3px}
+.table-temps .chiffres{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.table-temps .outil{display:block;width:100%;text-align:right;margin-bottom:2px}
+.ligne-doublon td{background:var(--rouge-voile)!important}
+.ligne-doublon:hover td{background:#F8DDE1!important}
+.ligne-neutre{opacity:.62}
+.ligne-neutre .titre-ligne{text-decoration:line-through;text-decoration-color:var(--gris-clair)}
+
+/* Panneau d'arbitrage des recouvrements */
+.groupe{border:1px solid var(--rouge);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.groupe-t{background:var(--rouge);color:#fff;font-size:12.5px;font-weight:700;padding:8px 13px;
+  display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center}
+.groupe-t span{font-weight:500;opacity:.92}
+.groupe-c{background:var(--rouge-voile);padding:10px;display:flex;flex-direction:column;gap:8px}
+.candidat{background:#fff;border-radius:6px;padding:10px 12px;display:flex;flex-wrap:wrap;
+  gap:10px;align-items:center;justify-content:space-between}
+.candidat .quoi{min-width:240px;flex:1 1 auto}
+.candidat .titre{font-size:13px;font-weight:600}
+.candidat .detail{font-size:11.5px;color:var(--gris);margin-top:2px}
+.candidat .quand{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--gris);white-space:nowrap}
+
 @media(max-width:900px){
   .duo{grid-template-columns:1fr}
   .c2,.c3,.c4,.c5,.c6,.c7,.c8,.c9{grid-column:span 12}
+  .table-temps .col-outils{position:static;box-shadow:none;width:auto}
+  .table-temps th{position:static}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 @media print{.rail,nav.onglets,form,.actions,button{display:none!important}
@@ -317,12 +352,15 @@ ul.avis li.serein{background:var(--vert-voile);border-left-color:var(--vert)}
             <option value="rep">Séances reportées</option>
             <option value="att">Estimations en attente</option>
             <option value="val">Estimations validées</option>
+            <option value="dbl">Lignes en recouvrement</option>
+            <option value="nul">Lignes neutralisées</option>
           </select>
           <button class="vide" id="fReset">Tout afficher</button>
           <span class="muted" id="fCompte"></span>
         </div>
         <div id="bandeauValidation"></div>
-        <div class="defile"><table id="tAct"></table></div>
+        <div id="panneauDoublons"></div>
+        <table class="table-temps" id="tAct"></table>
       </div>
     </section>
 
@@ -892,6 +930,9 @@ function rendreTemps(){
   byId("fPers").value = filtre.pers;
   byId("fOrigine").value = filtre.origine;
 
+  const enDoublon = new Set();
+  (E.doublons||[]).forEach(g=>g.ids.forEach(i=>enDoublon.add(i)));
+
   const lignes = E.activites.filter(a =>
     (!filtre.type || a.type_tache_id===+filtre.type) &&
     (!filtre.pers || a.personne_id===+filtre.pers) &&
@@ -900,19 +941,30 @@ function rendreTemps(){
         : filtre.origine==="rep" ? !!a.reportee
         : filtre.origine==="att" ? (a.statut==="estime" && a.heures>0)
         : filtre.origine==="val" ? !!a.validee
+        : filtre.origine==="dbl" ? enDoublon.has(a.id)
+        : filtre.origine==="nul" ? Number(a.part_imputable)===0
         : !a.recurrence_id)));
   byId("fCompte").textContent = lignes.length+" ligne(s), "+
     fmtH(lignes.reduce((s,a)=>s+a.heures_imputees,0))+" imputées";
 
   const cache = E.droits.restreint;
   const modifiable = !E.droits.lecture_seule;
-  const cols = [{t:"Date",num:1},{t:"Horaires",num:1},{t:"Libellé"},{t:"Type"},{t:"Acteur"},
-                {t:"Livrable"},{t:"Durée",num:1},{t:"Part",num:1},{t:"Imputé",num:1}];
-  if(!cache) cols.push({t:"Coût",num:1});
-  cols.push({t:""});
 
-  byId("tAct").innerHTML = tableau(cols, lignes.map(a=>{
+  const entetes =
+    '<thead><tr>'+
+      '<th style="width:96px">Date</th>'+
+      '<th>Libellé et type</th>'+
+      '<th style="width:190px">Acteur</th>'+
+      '<th class="chiffres" style="width:104px">Durée</th>'+
+      '<th class="chiffres" style="width:104px">Imputé</th>'+
+      (cache?"":'<th class="chiffres" style="width:104px">Coût</th>')+
+      '<th class="col-outils">Actions</th>'+
+    '</tr></thead>';
+
+  const corps = lignes.map(a=>{
     const t = typeOf(a.type_tache_id), b=[];
+    if(enDoublon.has(a.id)) b.push('<span class="etiq att">recouvrement</span>');
+    if(Number(a.part_imputable)===0) b.push('<span class="etiq">neutralisée</span>');
     if(a.mixte) b.push('<span class="etiq att">mixte</span>');
     if(a.statut==="estime") b.push('<span class="etiq">durée estimée</span>');
     if(a.heures<=0) b.push('<span class="etiq att">sans durée</span>');
@@ -921,65 +973,110 @@ function rendreTemps(){
     if(a.source==="declaratif") b.push('<span class="etiq">déclaratif</span>');
     if(a.validee) b.push('<span class="etiq ok">validée le '+fmtD(a.valide_le.slice(0,10))+
       (a.valide_par?' par '+esc(a.valide_par):'')+'</span>');
-    let outils = modifiable
-      ? '<button class="mini" data-ea="'+a.id+'">Modifier</button>'+
-        '<button class="mini" data-da="'+a.id+'">Dupliquer</button>'+
-        '<button class="mini rouge" data-xa="'+a.id+'">Supprimer</button>'
-      : '<span class="muted">lecture</span>';
+
+    const outils = [];
     if(E.droits.pilote){
       if(a.statut==="estime" && a.heures>0)
-        outils = '<button class="mini" data-va="'+a.id+'" style="color:var(--vert);font-weight:600">Valider</button>'+outils;
+        outils.push('<button class="mini outil" data-va="'+a.id+'" '+
+          'style="color:var(--vert);font-weight:600">Valider</button>');
       else if(a.validee)
-        outils = '<button class="mini" data-na="'+a.id+'">Dévalider</button>'+outils;
+        outils.push('<button class="mini outil" data-na="'+a.id+'">Dévalider</button>');
     }
-    return '<tr><td class="num">'+fmtD(a.date)+'</td>'+
-      '<td class="num muted">'+esc(a.heure_debut)+(a.heure_fin?'&nbsp;–&nbsp;'+esc(a.heure_fin):'')+'</td>'+
-      '<td>'+esc(a.libelle)+(a.note?'<br><span class="muted" style="font-size:12px">'+esc(a.note)+'</span>':'')+
-        (b.length?'<br>'+b.join(""):'')+'</td>'+
-      '<td>'+pilule(t.libelle, t.couleur)+'</td>'+
-      '<td>'+acteur(persOf(a.personne_id).nom)+'</td><td>'+esc(a.livrable)+'</td>'+
-      '<td class="num">'+fmtH(a.heures)+'</td><td class="num">'+fmtN(a.part_imputable,0)+'&nbsp;%</td>'+
-      '<td class="num">'+fmtH(a.heures_imputees)+'</td>'+
-      (cache?"":'<td class="num">'+fmtE(a.cout)+'</td>')+
-      '<td class="num">'+outils+'</td></tr>';
-  }),
-  '<tr><th colspan="8">Total affiché</th><th class="num">'+
-   fmtH(lignes.reduce((s,a)=>s+a.heures_imputees,0))+'</th>'+
-   (cache?"":'<th class="num">'+fmtE(lignes.reduce((s,a)=>s+a.cout,0))+'</th>')+'<th></th></tr>');
+    if(modifiable){
+      outils.push('<button class="mini outil" data-ea="'+a.id+'">Modifier</button>');
+      outils.push('<button class="mini outil" data-da="'+a.id+'">Dupliquer</button>');
+      if(Number(a.part_imputable) > 0)
+        outils.push('<button class="mini outil" data-za="'+a.id+'">Neutraliser</button>');
+      else
+        outils.push('<button class="mini outil" data-ra="'+a.id+'">Réimputer</button>');
+      outils.push('<button class="mini outil rouge" data-xa="'+a.id+'">Supprimer</button>');
+    }
+    if(!outils.length) outils.push('<span class="muted">lecture</span>');
+
+    const horaire = a.heure_debut ? esc(a.heure_debut)+(a.heure_fin?'&nbsp;–&nbsp;'+esc(a.heure_fin):'') : '';
+    const classes = [];
+    if(enDoublon.has(a.id)) classes.push("ligne-doublon");
+    if(Number(a.part_imputable)===0) classes.push("ligne-neutre");
+
+    return '<tr'+(classes.length?' class="'+classes.join(" ")+'"':'')+'>'+
+      '<td><div class="chiffres" style="text-align:left">'+fmtD(a.date)+'</div>'+
+        (horaire?'<div class="secondaire">'+horaire+'</div>':'')+'</td>'+
+      '<td><div class="titre-ligne">'+esc(a.libelle)+'</div>'+
+        '<div style="margin-top:5px">'+pilule(t.libelle, t.couleur)+
+        (a.livrable?' <span class="etiq bleu">'+esc(a.livrable)+'</span>':'')+'</div>'+
+        (b.length?'<div style="margin-top:5px">'+b.join("")+'</div>':'')+
+        (a.note?'<div class="secondaire">'+esc(a.note)+'</div>':'')+'</td>'+
+      '<td>'+acteur(persOf(a.personne_id).nom)+'</td>'+
+      '<td class="chiffres">'+fmtH(a.heures)+
+        '<div class="secondaire" style="text-align:right">'+fmtN(a.part_imputable,0)+'&nbsp;% imputable</div></td>'+
+      '<td class="chiffres">'+fmtH(a.heures_imputees)+'</td>'+
+      (cache?"":'<td class="chiffres">'+fmtE(a.cout)+'</td>')+
+      '<td class="col-outils">'+outils.join("")+'</td>'+
+    '</tr>';
+  }).join("");
+
+  const vide = '<tr><td colspan="'+(cache?6:7)+'" class="vide">Aucune ligne sur ce filtre.</td></tr>';
+  const pied = '<tfoot><tr>'+
+    '<th colspan="3">Total affiché</th>'+
+    '<th class="chiffres">'+fmtH(lignes.reduce((s,a)=>s+a.heures,0))+'</th>'+
+    '<th class="chiffres">'+fmtH(lignes.reduce((s,a)=>s+a.heures_imputees,0))+'</th>'+
+    (cache?"":'<th class="chiffres">'+fmtE(lignes.reduce((s,a)=>s+a.cout,0))+'</th>')+
+    '<th class="col-outils"></th></tr></tfoot>';
+
+  byId("tAct").innerHTML = entetes+'<tbody>'+(corps||vide)+'</tbody>'+pied;
 
   rendreBandeauValidation(lignes);
+  rendreDoublons();
 }
 
-/* Validation en masse : porte sur les lignes actuellement affichées, pour que
-   la sélection soit celle que l'écran montre et non une sélection invisible. */
-function rendreBandeauValidation(lignes){
-  const cible = byId("bandeauValidation");
-  if(!E.droits.pilote){ cible.innerHTML = ""; return; }
-  const attente = lignes.filter(a=>a.statut==="estime" && a.heures>0);
-  const sansDuree = lignes.filter(a=>a.statut==="estime" && a.heures<=0);
-  if(!attente.length && !sansDuree.length){ cible.innerHTML = ""; return; }
-  const heures = attente.reduce((s,a)=>s+a.heures_imputees,0);
-  let texte = "";
-  if(attente.length)
-    texte += '<strong>'+attente.length+' durée(s) estimée(s)</strong> parmi les lignes affichées, '+
-      'soit '+fmtH(heures)+'. Les valider les fera compter comme durées retenues, avec votre nom et la date en trace.';
-  if(sansDuree.length)
-    texte += (texte?'<br>':'')+sansDuree.length+' ligne(s) sans durée seront écartées : renseignez '+
-      'la durée avant de les valider.';
-  cible.innerHTML = '<div class="encart" style="background:var(--jaune-voile);border-left-color:var(--jaune)">'+
-    texte+(attente.length?'<div class="actions" style="margin-top:11px">'+
-      '<button class="pleine" id="valMasse" style="background:var(--vert)">Valider les '+
-      attente.length+' estimation(s) affichée(s)</button></div>':'')+'</div>';
-  const bouton = byId("valMasse");
-  if(bouton) bouton.addEventListener("click", ()=>{
-    if(!confirm("Valider "+attente.length+" ligne(s) ? Leur durée estimée deviendra une durée retenue.")) return;
-    envoyer(async ()=>{
-      const r = await api("/projets/"+PROJET_ID+"/activites/valider", {method:"POST",
-        body:JSON.stringify({ids: attente.map(a=>a.id)})});
-      if(r.ecartees && r.ecartees.length)
-        alert(r.validees+" ligne(s) validée(s). Écartées faute de durée : "+r.ecartees.join(" ; "));
-    }, "Estimations validées");
-  });
+/* Arbitrage des recouvrements, sur place : la ligne retenue est choisie ici même,
+   les autres sont neutralisées plutôt qu'effacées pour garder la trace de la réunion. */
+function rendreDoublons(){
+  const cible = byId("panneauDoublons");
+  const groupes = (E.doublons||[]).filter(g=>g.ids.some(
+    i=>{ const a = E.activites.find(x=>x.id===i); return a && Number(a.part_imputable)>0; }));
+  if(!groupes.length || E.droits.lecture_seule){ cible.innerHTML = ""; return; }
+
+  const bloc = groupes.map(g=>{
+    const lignes = g.ids.map(i=>E.activites.find(a=>a.id===i)).filter(Boolean);
+    const actifs = lignes.filter(a=>Number(a.part_imputable)>0);
+    if(actifs.length < 2) return "";
+    const cumul = actifs.reduce((s,a)=>s+a.heures_imputees,0);
+    const retenu = Math.max(...actifs.map(a=>a.heures_imputees));
+    const nom = persOf(g.personne_id).nom;
+    const candidats = lignes.map(a=>{
+      const t = typeOf(a.type_tache_id);
+      const neutre = Number(a.part_imputable)===0;
+      return '<div class="candidat">'+
+        '<div class="quoi"><div class="titre">'+esc(a.libelle)+'</div>'+
+          '<div class="detail">'+esc(t.libelle)+
+          (a.source==="declaratif"?" · déclaratif":"")+
+          (a.recurrence_id?" · séance récurrente":"")+
+          (neutre?" · déjà neutralisée":"")+'</div></div>'+
+        '<div class="quand">'+(a.heure_debut?esc(a.heure_debut)+'–'+esc(a.heure_fin)+' · ':'')+
+          fmtH(a.heures_imputees)+'</div>'+
+        (neutre ? '<span class="etiq">écartée</span>'
+          : '<button class="pleine" data-garder="'+a.id+'" data-groupe="'+g.ids.join("-")+'" '+
+            'style="padding:7px 13px">Retenir celle-ci</button>')+
+      '</div>';
+    }).join("");
+    return '<div class="groupe">'+
+      '<div class="groupe-t"><div>'+fmtD(g.date)+' · '+esc(nom)+'</div>'+
+        '<span>'+fmtH(cumul)+' cumulées pour une plage qui n\'en compte que '+fmtH(retenu)+
+        ', soit '+fmtH(cumul-retenu)+' comptées deux fois</span>'+
+        '<button class="vide" data-supprimer-groupe="'+g.ids.join("-")+'" '+
+        'style="padding:6px 12px;background:transparent;color:#fff;border-color:rgba(255,255,255,.5)">'+
+        'Supprimer les redondantes</button></div>'+
+      '<div class="groupe-c">'+candidats+'</div></div>';
+  }).join("");
+
+  if(!bloc.trim()){ cible.innerHTML = ""; return; }
+  cible.innerHTML = '<div style="margin-bottom:16px">'+
+    '<h3 style="margin-bottom:6px">Recouvrements à trancher</h3>'+
+    '<p class="sub" style="margin-bottom:12px">Ces lignes se chevauchent pour une même '+
+    'personne le même jour : les imputer toutes reviendrait à compter deux fois la même '+
+    'heure. Retenir une ligne ramène les autres à zéro pour cent sans les effacer, ce qui '+
+    'conserve la trace de la réunion tout en la retirant du total.</p>'+bloc+'</div>';
 }
 
 function litAct(){
@@ -1466,6 +1563,37 @@ document.addEventListener("click", e=>{
   if(d.na && confirm("Repasser cette ligne en durée estimée ?"))
     envoyer(()=>api("/projets/"+PROJET_ID+"/activites/"+d.na+"/devalider",{method:"POST"}),
       "Validation retirée");
+  if(d.za || d.ra){
+    const id = +(d.za || d.ra);
+    const a = E.activites.find(x=>x.id===id);
+    const part = d.za ? 0 : 100;
+    if(d.za && !confirm("Neutraliser cette ligne ? Elle restera au dossier mais ne comptera "+
+      "plus dans le total.")) return;
+    envoyer(()=>api("/projets/"+PROJET_ID+"/activites/"+id, {method:"PUT", body:JSON.stringify({
+      date:a.date, heure_debut:a.heure_debut, heure_fin:a.heure_fin, duree_h:a.duree_h,
+      libelle:a.libelle, livrable:a.livrable, part_imputable:part, source:a.source,
+      statut:a.statut, mixte:a.mixte, note:a.note,
+      type_tache_id:a.type_tache_id, personne_id:a.personne_id})}),
+      d.za ? "Ligne neutralisée" : "Ligne réimputée");
+  }
+  if(d.garder){
+    const ids = d.groupe.split("-").map(Number);
+    envoyer(()=>api("/projets/"+PROJET_ID+"/activites/arbitrer-doublon", {method:"POST",
+      body:JSON.stringify({garder_id:+d.garder, ids:ids, action:"neutraliser"})}),
+      "Recouvrement arbitré, les autres lignes sont neutralisées");
+  }
+  if(d.supprimerGroupe){
+    const ids = d.supprimerGroupe.split("-").map(Number);
+    const restantes = ids.map(i=>E.activites.find(a=>a.id===i)).filter(
+      a=>a && Number(a.part_imputable)>0);
+    if(!restantes.length) return;
+    restantes.sort((x,y)=>y.heures_imputees-x.heures_imputees);
+    if(!confirm("Supprimer définitivement "+(restantes.length-1)+" ligne(s) et conserver « "+
+      restantes[0].libelle+" » ? Préférez la neutralisation si la trace a une valeur.")) return;
+    envoyer(()=>api("/projets/"+PROJET_ID+"/activites/arbitrer-doublon", {method:"POST",
+      body:JSON.stringify({garder_id:restantes[0].id, ids:ids, action:"supprimer"})}),
+      "Lignes redondantes supprimées");
+  }
   if(d.xa && confirm("Supprimer cette ligne de temps ?"))
     envoyer(()=>api("/projets/"+PROJET_ID+"/activites/"+d.xa,{method:"DELETE"}), "Ligne supprimée");
 

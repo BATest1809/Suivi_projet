@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session, joinedload
 from . import models, schemas, securite, seed_data, tableau_bord
 from .database import Base, SessionLocal, engine, get_db
 
-VERSION = "2.1.1"
-REVISION = "validation-r3"
+VERSION = "2.3.0"
+REVISION = "tableau-doublons-r5"
 
 app = FastAPI(title="Suivi des temps et dépenses", version=VERSION)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -42,68 +42,95 @@ def erreur_inattendue(requete, exc):
         detail = f"Erreur interne : {type(exc).__name__} — {exc}"
     return JSONResponse({"detail": detail}, status_code=500)
 
-COLONNES_AJOUTEES = {
-    "activites": {"date_theorique": "DATE", "valide_le": "TIMESTAMP", "valide_par_id": "INTEGER"},
-    "recurrences": {"reporter": "BOOLEAN DEFAULT TRUE NOT NULL"},
-    "projets": {"artefacts_tableau": "VARCHAR(400) DEFAULT '' NOT NULL"},
-}
+def _valeur_sql(valeur) -> str:
+    """Littéral SQL correspondant au défaut Python d'une colonne."""
+    if isinstance(valeur, bool):
+        return "TRUE" if valeur else "FALSE"
+    if isinstance(valeur, (int, float)):
+        return str(valeur)
+    return "'" + str(valeur).replace("'", "''") + "'"
 
 
-def migrer(connexion) -> None:
-    """Ajoute les colonnes apparues après une première mise en service.
+def _definition_colonne(colonne) -> str:
+    """Fragment DDL d'ajout d'une colonne, dérivé du modèle lui-même.
 
-    Chaque ajout est isolé : une colonne qui échoue ne doit pas empêcher les autres,
-    ni bloquer le démarrage. Ce qui manque est signalé dans les journaux.
+    Une colonne non nulle exige une valeur pour les lignes déjà présentes : on
+    reprend le défaut Python déclaré sur le modèle. À défaut de défaut, la colonne
+    est créée nullable plutôt que de faire échouer la migration.
     """
-    inspecteur = inspect(connexion)
-    tables = set(inspecteur.get_table_names())
-    for table, colonnes in COLONNES_AJOUTEES.items():
-        if table not in tables:
-            continue
-        presentes = {c["name"] for c in inspecteur.get_columns(table)}
-        for nom, definition in colonnes.items():
-            if nom in presentes:
-                continue
-            try:
-                connexion.execute(text(f"ALTER TABLE {table} ADD COLUMN {nom} {definition}"))
-                print(f"Migration : colonne {table}.{nom} ajoutée.")
-            except Exception as erreur:
-                print(f"Migration : échec sur {table}.{nom} ({erreur}). "
-                      "La colonne reste à créer à la main.")
-    if "activites" in tables:
-        try:
-            connexion.execute(text(
-                "UPDATE activites SET date_theorique = date "
-                "WHERE recurrence_id IS NOT NULL AND date_theorique IS NULL"))
-        except Exception as erreur:
-            print(f"Migration : reprise des dates théoriques impossible ({erreur}).")
+    fragment = colonne.type.compile(engine.dialect)
+    defaut = getattr(colonne.default, "arg", None) if colonne.default is not None else None
+    if defaut is not None and not callable(defaut):
+        fragment += f" DEFAULT {_valeur_sql(defaut)}"
+        if not colonne.nullable:
+            fragment += " NOT NULL"
+    elif not colonne.nullable:
+        print(f"Migration : {colonne.name} est déclarée non nulle sans valeur par défaut, "
+              "elle est ajoutée nullable pour ne pas rompre les lignes existantes.")
+    return fragment
 
 
-def verifier_schema() -> None:
-    """Compare les colonnes attendues par le modèle à celles réellement présentes.
-
-    Un écart ici est la cause la plus fréquente d'une erreur 500 sur la lecture d'un
-    projet : mieux vaut le lire au démarrage que le découvrir dans l'interface.
-    """
+def colonnes_manquantes():
+    """Colonnes présentes dans le modèle et absentes de la base."""
     with engine.connect() as connexion:
         inspecteur = inspect(connexion)
         tables = set(inspecteur.get_table_names())
         manquantes = []
         for table in Base.metadata.sorted_tables:
             if table.name not in tables:
-                manquantes.append(f"table {table.name}")
                 continue
             presentes = {c["name"] for c in inspecteur.get_columns(table.name)}
             for colonne in table.columns:
                 if colonne.name not in presentes:
-                    manquantes.append(f"{table.name}.{colonne.name}")
-    if manquantes:
+                    manquantes.append((table.name, colonne))
+    return manquantes
+
+
+def migrer() -> None:
+    """Aligne la base sur le modèle, sans liste tenue à la main.
+
+    Les colonnes à ajouter sont déduites de Base.metadata : une colonne ajoutée au
+    modèle est donc migrée d'office, ce qu'une liste manuelle ne garantissait pas.
+    Chaque ALTER a sa propre transaction, afin qu'un échec isolé n'annule pas les
+    autres, ce que Postgres ferait dans une transaction commune.
+    """
+    for nom_table, colonne in colonnes_manquantes():
+        ordre = (f"ALTER TABLE {nom_table} ADD COLUMN "
+                 f"{colonne.name} {_definition_colonne(colonne)}")
+        try:
+            with engine.begin() as connexion:
+                connexion.execute(text(ordre))
+            print(f"Migration : colonne {nom_table}.{colonne.name} ajoutée.")
+        except Exception as erreur:
+            print(f"Migration : échec sur {nom_table}.{colonne.name} ({erreur}).")
+            print(f"            ordre exécuté : {ordre}")
+
+    try:
+        with engine.begin() as connexion:
+            connexion.execute(text(
+                "UPDATE activites SET date_theorique = date "
+                "WHERE recurrence_id IS NOT NULL AND date_theorique IS NULL"))
+    except Exception as erreur:
+        print(f"Migration : reprise des dates théoriques impossible ({erreur}).")
+
+
+def verifier_schema() -> None:
+    """Dernier contrôle après migration : ce qui manque encore est nommé."""
+    manquantes = [f"{table}.{colonne.name}" for table, colonne in colonnes_manquantes()]
+    tables_absentes = []
+    with engine.connect() as connexion:
+        existantes = set(inspect(connexion).get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existantes:
+            tables_absentes.append(f"table {table.name}")
+    ecarts = tables_absentes + manquantes
+    if ecarts:
         print("=" * 68)
-        print("SCHÉMA INCOMPLET, l'application renverra des erreurs 500 :")
-        for nom in manquantes:
+        print("SCHÉMA INCOMPLET, l'application renverra des erreurs sur ces objets :")
+        for nom in ecarts:
             print("  manque " + nom)
-        print("Redémarrez une fois avec REINIT_SCHEMA=1 pour recréer les tables,")
-        print("ou ajoutez ces colonnes à la main. Attention, REINIT_SCHEMA efface tout.")
+        print("Exécutez migration_manuelle.sql dans la console Postgres, ou redémarrez")
+        print("une fois avec REINIT_SCHEMA=1 pour tout recréer. REINIT_SCHEMA efface les données.")
         print("=" * 68)
     else:
         print("Schéma vérifié : toutes les colonnes attendues sont présentes.")
@@ -120,8 +147,7 @@ def demarrage() -> None:
         print("REINIT_SCHEMA=1, suppression et recréation de toutes les tables.")
         Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    with engine.begin() as connexion:
-        migrer(connexion)
+    migrer()
     verifier_schema()
     db = SessionLocal()
     try:
@@ -324,6 +350,7 @@ def etat(projet_id: int, p: securite.Portee = Depends(scope), db: Session = Depe
         "activites": [s_activite(a) for a in activites],
         "depenses": [s_depense(d) for d in depenses_visibles(p, db)],
         "recurrences": [s_recurrence(r, compte[r.id]) for r in recurrences],
+        "doublons": groupes_doublons(activites),
         "recapitulatif": recapitulatif(p, db),
     }
 
@@ -612,6 +639,47 @@ def valider_en_masse(projet_id: int, corps: schemas.ValidationEnMasse,
             "examinees": len(candidates)}
 
 
+@app.post("/api/projets/{projet_id}/activites/arbitrer-doublon")
+def arbitrer_doublon(projet_id: int, corps: schemas.ArbitrageDoublon,
+                     p: securite.Portee = Depends(scope),
+                     u: models.Utilisateur = Depends(securite.utilisateur_courant),
+                     db: Session = Depends(get_db)):
+    """Tranche un recouvrement en retenant une seule ligne.
+
+    Neutraliser vaut mieux que supprimer : la ligne écartée reste au dossier avec
+    zéro pour cent d'imputation, ce qui garde la trace de la réunion tout en la
+    retirant du total. La suppression reste possible quand la ligne est une simple
+    scorie d'agenda.
+    """
+    p.exiger_ecriture()
+    if corps.action not in ("neutraliser", "supprimer"):
+        raise HTTPException(422, "Action inconnue.")
+    garder = verifier_projet(p, db.get(models.Activite, corps.garder_id), "La ligne retenue")
+    p.exiger_personne(garder.personne_id)
+
+    ecartees = []
+    for identifiant in corps.ids:
+        if identifiant == corps.garder_id:
+            continue
+        a = verifier_projet(p, db.get(models.Activite, identifiant), "Cette ligne de temps")
+        p.exiger_personne(a.personne_id)
+        ecartees.append(a)
+
+    trace = (f"Recouvrement du {garder.date.strftime('%d/%m/%Y')} arbitré le "
+             f"{datetime.utcnow().strftime('%d/%m/%Y')} par {u.nom or u.email} : "
+             f"« {garder.libelle} » est la ligne retenue.")
+    for a in ecartees:
+        if corps.action == "supprimer":
+            db.delete(a)
+        else:
+            a.part_imputable = 0.0
+            a.note = f"{a.note or ''} {trace}".strip()
+    if ecartees and corps.action == "neutraliser":
+        garder.note = f"{garder.note or ''} {trace}".strip()
+    db.commit()
+    return {"retenue": corps.garder_id, "ecartees": len(ecartees), "action": corps.action}
+
+
 # --------------------------------------------------------------------------
 # dépenses
 # --------------------------------------------------------------------------
@@ -752,6 +820,42 @@ def _chevauche(a, b) -> bool:
     minutes = lambda t: int(t[:2]) * 60 + int(t[3:5])
     return minutes(a.heure_debut) < minutes(b.heure_fin) and \
         minutes(b.heure_debut) < minutes(a.heure_fin)
+
+
+def groupes_doublons(activites):
+    """Groupes de lignes qui se recouvrent pour une même personne le même jour.
+
+    Deux lignes qui se chevauchent ne peuvent pas être imputées toutes les deux :
+    l'une au moins doit être neutralisée, sans quoi le total compte deux fois la
+    même heure de travail.
+    """
+    par_jour = defaultdict(list)
+    for a in activites:
+        par_jour[(a.date, a.personne_id)].append(a)
+
+    groupes = []
+    for (jour, personne_id), lot in sorted(par_jour.items()):
+        restants = list(lot)
+        while restants:
+            courant = [restants.pop(0)]
+            change = True
+            while change:
+                change = False
+                for autre in list(restants):
+                    if any(_chevauche(autre, membre) for membre in courant):
+                        courant.append(autre)
+                        restants.remove(autre)
+                        change = True
+            if len(courant) > 1:
+                courant.sort(key=lambda a: (a.heures_imputees, a.id), reverse=True)
+                groupes.append({
+                    "date": jour.isoformat(),
+                    "personne_id": personne_id,
+                    "ids": [a.id for a in courant],
+                    "heures_cumulees": round(sum(a.heures_imputees for a in courant), 2),
+                    "heures_retenues": round(max(a.heures_imputees for a in courant), 2),
+                })
+    return groupes
 
 
 def controles(activites, depenses, personnes, projet, masquer_couts=False):

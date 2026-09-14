@@ -40,6 +40,18 @@ class ProjetIn(BaseModel):
     artefacts_tableau: Optional[str] = None
 
 
+class ArbitrageDoublon(BaseModel):
+    """Arbitrage d'un groupe de lignes qui se recouvrent.
+
+    garder_id désigne la ligne retenue. Les autres sont neutralisées, c'est-à-dire
+    ramenées à zéro pour cent d'imputation sans être effacées, ou supprimées si la
+    trace n'a aucune valeur.
+    """
+    garder_id: int
+    ids: list[int]
+    action: str = "neutraliser"
+
+
 class ValidationEnMasse(BaseModel):
     """Sélection de lignes à valider. Les identifiants priment sur les filtres."""
     ids: List[int] = []

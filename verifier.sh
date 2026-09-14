@@ -44,6 +44,16 @@ doubles = [k for k, v in Counter(routes).items() if v > 1]
 print("  " + (str(doubles) if doubles else "aucune"))
 raise SystemExit(1 if doubles else 0)
 PY
+echo "== migration deduite du modele, pas d une liste a la main =="
+python3 - <<'PY'
+import pathlib
+src = pathlib.Path("app/main.py").read_text()
+assert "COLONNES_AJOUTEES" not in src, (
+    "une liste de colonnes tenue a la main est reapparue : elle finira par oublier une colonne")
+assert "Base.metadata.sorted_tables" in src, "la migration doit se deduire du modele"
+print("  ok")
+PY
+
 echo "== cohérence modèle, API et interface =="
 python3 tests_hors_ligne.py
 echo "== interface : identifiants et équilibrage =="

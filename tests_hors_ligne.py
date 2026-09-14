@@ -143,6 +143,11 @@ def jeu_d_essai():
         activite(4, date(2026, 4, 22), "Journée mixte", 3, 1, 8.0, mixte=True),
         activite(5, date(2026, 7, 3), "Ligne sans durée", 2, 2, 0.0, statut="estime",
                  debut="", fin=""),
+        # recouvrement volontaire : deux comités le même matin pour la même personne
+        activite(6, date(2026, 6, 10), "Comité de pilotage", 1, 1, 4.0,
+                 debut="08:30", fin="12:30"),
+        activite(7, date(2026, 6, 10), "Comité de coordination", 1, 1, 3.0,
+                 debut="09:00", fin="12:00"),
     ]
     depenses = [
         Strict("Depense", id=1, projet_id=1, date=date(2026, 5, 13), libelle="Colab L4",
@@ -211,6 +216,24 @@ def principal():
         assert validee["mesuree_a_la_source"] is False, \
             "une ligne validée ne doit jamais être présentée comme mesurée à la source"
     verifier("la validation reste distinguée de la mesure", serialisation_complete)
+
+    def doublons():
+        groupes = espace["groupes_doublons"](activites)
+        assert len(groupes) == 1, f"un seul recouvrement attendu, {len(groupes)} trouvé(s)"
+        groupe = groupes[0]
+        assert set(groupe["ids"]) == {6, 7}, groupe["ids"]
+        assert groupe["heures_cumulees"] == 7.0, groupe["heures_cumulees"]
+        assert groupe["heures_retenues"] == 4.0, groupe["heures_retenues"]
+        assert groupe["ids"][0] == 6, "la ligne la plus longue doit venir en tête"
+    verifier("regroupement des recouvrements", doublons)
+
+    def sans_faux_positif():
+        isolees = [a for a in activites if a.id in (1, 3)]
+        assert espace["groupes_doublons"](isolees) == [], \
+            "deux lignes de personnes ou de jours différents ne sont pas un recouvrement"
+        sans_horaire = [a for a in activites if a.id == 5]
+        assert espace["groupes_doublons"](sans_horaire * 1) == []
+    verifier("pas de faux positif sur les recouvrements", sans_faux_positif)
 
     print()
     if echecs:

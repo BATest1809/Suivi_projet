@@ -85,31 +85,54 @@ information : chaque pastille est légendée, chaque graphique doublé d'un tabl
 
 ### Savoir quelle version tourne
 
-Le démarrage écrit désormais un bandeau dans les journaux :
+Le démarrage écrit un bandeau dans les journaux :
 
 ```
-Suivi des temps et dépenses, version 2.1.1, révision validation-r3
+Suivi des temps et dépenses, version 2.3.0, révision tableau-doublons-r5
 ```
 
 Si ce bandeau n'apparaît pas, le service exécute encore une version antérieure et le
-redéploiement n'a pas pris. Les deux lignes suivantes, `Migration :` puis
-`Schéma vérifié`, confirment que la base a été mise à niveau.
+redéploiement n'a pas pris.
 
+### Mise à niveau de la base
 
-L'application journalise désormais la trace complète de toute erreur inattendue et renvoie
-la cause en clair à l'écran plutôt qu'un code nu. Mettez `DETAIL_ERREURS=0` si vous préférez
-un message générique en production.
+Les colonnes à ajouter ne sont plus listées à la main : elles sont déduites de
+`Base.metadata`, donc toute colonne ajoutée au modèle est migrée d'office. Chaque ordre
+`ALTER TABLE` a sa propre transaction, pour qu'un échec isolé n'annule pas les autres, ce
+que Postgres ferait dans une transaction commune. Une colonne non nulle reprend le défaut
+déclaré sur le modèle pour les lignes déjà en base ; sans défaut, elle est ajoutée nullable
+plutôt que de faire échouer la migration.
 
-Au démarrage, le schéma réel est comparé à celui qu'attend le modèle. Tout écart est écrit
-dans les journaux sous la forme `manque activites.origine_estimee`, avec la marche à suivre.
-C'est la cause la plus fréquente d'une erreur sur la lecture d'un projet : une colonne
-ajoutée au modèle qui n'existe pas encore dans la base. La migration au démarrage ajoute les
-colonnes connues une par une, sans qu'un échec isolé bloque le service.
+Les journaux montrent le résultat, ligne par ligne :
+
+```
+Migration : colonne activites.origine_estimee ajoutée.
+Schéma vérifié : toutes les colonnes attendues sont présentes.
+```
+
+Si un écart subsiste, il est nommé explicitement et `migration_manuelle.sql` s'exécute tel
+quel dans la console Postgres de Railway pour le combler.
 
 Avant chaque déploiement, `./verifier.sh` enchaîne la compilation, la recherche de
 définitions et de routes en double, la cohérence entre le modèle, l'API et l'interface, puis
 l'équilibrage du JavaScript et la présence des identifiants du DOM. Ces contrôles tournent
 sans base de données ni dépendance installée.
+
+## Recouvrements
+
+Deux lignes qui se chevauchent pour une même personne le même jour ne peuvent pas être
+imputées toutes les deux. Le regroupement est transitif : trois entrées qui se recouvrent en
+chaîne forment un seul groupe, pas deux. Les trois enregistrements du comité du 10 juin
+cumulent ainsi 10,25 heures pour une demi-journée de 4,25 heures, soit six heures comptées en
+trop.
+
+L'onglet du temps passé affiche ces groupes en tête, avant la table, avec pour chaque ligne un
+bouton qui la retient. Retenir une ligne ramène les autres à zéro pour cent d'imputation sans
+les effacer : la réunion reste au dossier, elle sort du total, et une note datée et signée
+consigne l'arbitrage sur chaque ligne concernée. La suppression définitive reste offerte pour
+les scories d'agenda qui n'ont aucune valeur de preuve. Les lignes en recouvrement sont
+surlignées dans la table, les lignes neutralisées apparaissent barrées et estompées, et deux
+filtres permettent de n'afficher que les unes ou les autres.
 
 ## Validation des durées estimées
 
