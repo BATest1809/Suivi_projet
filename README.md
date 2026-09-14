@@ -81,6 +81,36 @@ Fond gris clair, cartes blanches arrondies à ombre douce, palette saturée à c
 les acteurs, grands nombres pour les totaux. Les couleurs ne portent jamais seules une
 information : chaque pastille est légendée, chaque graphique doublé d'un tableau chiffré.
 
+## En cas d'erreur 500
+
+### Savoir quelle version tourne
+
+Le démarrage écrit désormais un bandeau dans les journaux :
+
+```
+Suivi des temps et dépenses, version 2.1.1, révision validation-r3
+```
+
+Si ce bandeau n'apparaît pas, le service exécute encore une version antérieure et le
+redéploiement n'a pas pris. Les deux lignes suivantes, `Migration :` puis
+`Schéma vérifié`, confirment que la base a été mise à niveau.
+
+
+L'application journalise désormais la trace complète de toute erreur inattendue et renvoie
+la cause en clair à l'écran plutôt qu'un code nu. Mettez `DETAIL_ERREURS=0` si vous préférez
+un message générique en production.
+
+Au démarrage, le schéma réel est comparé à celui qu'attend le modèle. Tout écart est écrit
+dans les journaux sous la forme `manque activites.origine_estimee`, avec la marche à suivre.
+C'est la cause la plus fréquente d'une erreur sur la lecture d'un projet : une colonne
+ajoutée au modèle qui n'existe pas encore dans la base. La migration au démarrage ajoute les
+colonnes connues une par une, sans qu'un échec isolé bloque le service.
+
+Avant chaque déploiement, `./verifier.sh` enchaîne la compilation, la recherche de
+définitions et de routes en double, la cohérence entre le modèle, l'API et l'interface, puis
+l'équilibrage du JavaScript et la présence des identifiants du DOM. Ces contrôles tournent
+sans base de données ni dépendance installée.
+
 ## Validation des durées estimées
 
 Une durée peut être relevée ou estimée. Le pilotage du projet, gestionnaire ou

@@ -196,6 +196,7 @@ class Activite(Base):
     # retenue, mais l'origine de cette bascule reste inscrite et n'est jamais effacée.
     valide_le = Column(DateTime, nullable=True)
     valide_par_id = Column(Integer, ForeignKey("utilisateurs.id", ondelete="SET NULL"), nullable=True)
+    origine_estimee = Column(Boolean, nullable=False, default=False)
 
     type_tache_id = Column(Integer, ForeignKey("types_tache.id"), nullable=False)
     personne_id = Column(Integer, ForeignKey("personnes.id"), nullable=False)
@@ -213,12 +214,7 @@ class Activite(Base):
     @property
     def mesuree_a_la_source(self) -> bool:
         """Durée mesurée dès la saisie, sans passer par une validation."""
-        return self.statut == "mesure" and not self.origine_estimee
-    validateur = relationship("Utilisateur", foreign_keys=[valide_par_id])
-
-    @property
-    def validee(self) -> bool:
-        return self.valide_le is not None
+        return self.statut == "mesure" and not bool(self.origine_estimee)
 
     @property
     def heures(self) -> float:

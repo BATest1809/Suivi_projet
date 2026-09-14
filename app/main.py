@@ -8,6 +8,7 @@ consultation. L'administration gère les comptes, les projets et les accès.
 import csv
 import io
 import os
+import traceback
 import zipfile
 from collections import defaultdict
 from datetime import datetime
@@ -22,8 +23,24 @@ from sqlalchemy.orm import Session, joinedload
 from . import models, schemas, securite, seed_data, tableau_bord
 from .database import Base, SessionLocal, engine, get_db
 
-app = FastAPI(title="Suivi des temps et dépenses", version="2.0.0")
+VERSION = "2.1.1"
+REVISION = "validation-r3"
+
+app = FastAPI(title="Suivi des temps et dépenses", version=VERSION)
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Une erreur non prévue doit arriver lisible à l'écran plutôt que sous la forme d'un 500
+# muet. La trace complète part dans les journaux ; le détail renvoyé reste court.
+DETAIL_ERREURS = os.getenv("DETAIL_ERREURS", "1") == "1"
+
+
+@app.exception_handler(Exception)
+def erreur_inattendue(requete, exc):
+    traceback.print_exc()
+    detail = "Erreur interne. Consultez les journaux du service."
+    if DETAIL_ERREURS:
+        detail = f"Erreur interne : {type(exc).__name__} — {exc}"
+    return JSONResponse({"detail": detail}, status_code=500)
 
 COLONNES_AJOUTEES = {
     "activites": {"date_theorique": "DATE", "valide_le": "TIMESTAMP", "valide_par_id": "INTEGER"},
@@ -33,7 +50,11 @@ COLONNES_AJOUTEES = {
 
 
 def migrer(connexion) -> None:
-    """Ajoute les colonnes apparues après une première mise en service."""
+    """Ajoute les colonnes apparues après une première mise en service.
+
+    Chaque ajout est isolé : une colonne qui échoue ne doit pas empêcher les autres,
+    ni bloquer le démarrage. Ce qui manque est signalé dans les journaux.
+    """
     inspecteur = inspect(connexion)
     tables = set(inspecteur.get_table_names())
     for table, colonnes in COLONNES_AJOUTEES.items():
@@ -41,22 +62,67 @@ def migrer(connexion) -> None:
             continue
         presentes = {c["name"] for c in inspecteur.get_columns(table)}
         for nom, definition in colonnes.items():
-            if nom not in presentes:
+            if nom in presentes:
+                continue
+            try:
                 connexion.execute(text(f"ALTER TABLE {table} ADD COLUMN {nom} {definition}"))
+                print(f"Migration : colonne {table}.{nom} ajoutée.")
+            except Exception as erreur:
+                print(f"Migration : échec sur {table}.{nom} ({erreur}). "
+                      "La colonne reste à créer à la main.")
     if "activites" in tables:
-        connexion.execute(text(
-            "UPDATE activites SET date_theorique = date "
-            "WHERE recurrence_id IS NOT NULL AND date_theorique IS NULL"))
+        try:
+            connexion.execute(text(
+                "UPDATE activites SET date_theorique = date "
+                "WHERE recurrence_id IS NOT NULL AND date_theorique IS NULL"))
+        except Exception as erreur:
+            print(f"Migration : reprise des dates théoriques impossible ({erreur}).")
+
+
+def verifier_schema() -> None:
+    """Compare les colonnes attendues par le modèle à celles réellement présentes.
+
+    Un écart ici est la cause la plus fréquente d'une erreur 500 sur la lecture d'un
+    projet : mieux vaut le lire au démarrage que le découvrir dans l'interface.
+    """
+    with engine.connect() as connexion:
+        inspecteur = inspect(connexion)
+        tables = set(inspecteur.get_table_names())
+        manquantes = []
+        for table in Base.metadata.sorted_tables:
+            if table.name not in tables:
+                manquantes.append(f"table {table.name}")
+                continue
+            presentes = {c["name"] for c in inspecteur.get_columns(table.name)}
+            for colonne in table.columns:
+                if colonne.name not in presentes:
+                    manquantes.append(f"{table.name}.{colonne.name}")
+    if manquantes:
+        print("=" * 68)
+        print("SCHÉMA INCOMPLET, l'application renverra des erreurs 500 :")
+        for nom in manquantes:
+            print("  manque " + nom)
+        print("Redémarrez une fois avec REINIT_SCHEMA=1 pour recréer les tables,")
+        print("ou ajoutez ces colonnes à la main. Attention, REINIT_SCHEMA efface tout.")
+        print("=" * 68)
+    else:
+        print("Schéma vérifié : toutes les colonnes attendues sont présentes.")
 
 
 @app.on_event("startup")
 def demarrage() -> None:
+    # Bandeau de démarrage : permet de lire dans les journaux quelle version tourne
+    # réellement, plutôt que de la supposer d'après le dépôt.
+    print("=" * 68)
+    print(f"Suivi des temps et dépenses, version {VERSION}, révision {REVISION}")
+    print("=" * 68)
     if os.getenv("REINIT_SCHEMA") == "1":
         print("REINIT_SCHEMA=1, suppression et recréation de toutes les tables.")
         Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connexion:
         migrer(connexion)
+    verifier_schema()
     db = SessionLocal()
     try:
         seed_data.amorcer(db)
@@ -112,7 +178,9 @@ def s_activite(a: models.Activite) -> dict:
         "cout": round(a.cout, 2),
         "validee": a.valide_le is not None,
         "valide_le": a.valide_le.isoformat() if a.valide_le else None,
-        "valide_par": a.valide_par.nom or a.valide_par.email if a.valide_par else None,
+        "valide_par": (a.valide_par.nom or a.valide_par.email) if a.valide_par else None,
+        "origine_estimee": bool(a.origine_estimee),
+        "mesuree_a_la_source": a.mesuree_a_la_source,
     }
 
 
